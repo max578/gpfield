@@ -1,0 +1,26 @@
+# R artefacts
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj
+*.tar.gz
+*.Rcheck/
+.DS_Store
+
+# pkgdown output
+docs/
+
+# vignette build leftovers
+inst/doc/
+
+# working notes (charter Git hygiene -- never enter shared history)
+PROJECT_LOG.md
+PROJECT_LOG_ARCHIVE.md
+research_*.md
+implementation_plan_*
+aa_notes*
+CLAUDE.md
+.claude/
+.positai/
+.cursor/

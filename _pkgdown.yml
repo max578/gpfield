@@ -1,0 +1,59 @@
+url: https://github.com/max578/gpfield
+
+template:
+  bootstrap: 5
+
+reference:
+- title: Model specification and fitting
+  desc: >
+    Declare a spatial or spatio-temporal Gaussian-process model and fit it to
+    field or trial data by marginal-likelihood maximisation.
+  contents:
+  - gpfield_spec
+  - gp_fit
+
+- title: Prediction and change of support
+  desc: >
+    Predict the latent field at point support, or at a different support --
+    paddock-scale block averages with the predictive variance propagated through
+    the support map.
+  contents:
+  - gp_predict
+  - block_support
+
+- title: Field and trial smoothing
+  desc: >
+    The one-call path from a row-column multi-environment-trial layout to a
+    smoothed surface, and a colourblind-safe raster of it.
+  contents:
+  - gp_field_smooth
+  - gp_field_plot
+
+- title: Orchestra contract manifest
+  desc: >
+    Emit a smoothed surface as the orchestra's versioned, integrity-hashed
+    ensemble-manifest contract, and verify it.
+  contents:
+  - as_orchestra_manifest
+  - orchestra_manifest
+  - verify_manifest
+
+- title: Abstention
+  desc: >
+    The typed refusal returned when the data support or spatial range cannot bear
+    the requested prediction resolution.
+  contents:
+  - gpfield_abstention
+  - is_gpfield_abstention
+
+- title: Classes
+  desc: >
+    The S7 object hierarchy carrying an analysis end to end.
+  contents:
+  - gpfield_spec_class
+  - gpfield_fit_class
+  - gpfield_prediction_class
+
+- title: Package
+  contents:
+  - gpfield-package

@@ -1,0 +1,16 @@
+^gpfield\.Rproj$
+^\.Rproj\.user$
+^_pkgdown\.yml$
+^docs$
+^pkgdown$
+^\.github$
+^LICENSE\.md$
+^README\.Rmd$
+^README\.html$
+^\.claude$
+^\.positai$
+^\.cursor$
+^PROJECT_LOG.*$
+^.*\.cairn\.md$
+^cran-comments\.md$
+^CRAN-SUBMISSION$

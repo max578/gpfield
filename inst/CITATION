@@ -1,0 +1,19 @@
+## Hand-crafted CITATION for gpfield.
+## Keep the author and ORCID in sync with DESCRIPTION Authors@R; the version is
+## read from the installed package metadata so the citation never drifts.
+
+citHeader("To cite gpfield in publications, please use:")
+
+bibentry(
+  bibtype = "Manual",
+  title   = paste0("{gpfield}: Change-of-Support Gaussian-Process Regression ",
+                   "for Field and Multi-Environment-Trial Data"),
+  author  = person(
+    "Max", "Moldovan",
+    email   = "max.moldovan@gmail.com",
+    comment = c(ORCID = "0000-0001-9680-8474")
+  ),
+  year    = "2026",
+  note    = sprintf("R package version %s", meta$Version),
+  url     = "https://github.com/max578/gpfield"
+)

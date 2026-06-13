@@ -1,0 +1,179 @@
+---
+title: "Change-of-support field smoothing with gpfield"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Change-of-support field smoothing with gpfield}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 6,
+  fig.height = 4.5
+)
+set.seed(1L)
+```
+
+```{r libs}
+library(gpfield)
+```
+
+## What this vignette shows
+
+`gpfield` fits a spatial Gaussian process to a field or trial layout and answers
+three questions a noisy plot grid alone cannot:
+
+1. what is the smoothed trait surface, with calibrated uncertainty;
+2. what is the trait averaged over a paddock-scale block -- a *change of support*
+   from the observed point process to an areal one, with the predictive variance
+   propagated through the support map rather than averaged away;
+3. when is the field simply too coarse, or a block too far from any data, for an
+   honest answer -- in which case `gpfield` abstains rather than fabricate a
+   confident surface.
+
+We use a real, public multi-environment trial -- the *Besag MET* barley-yield
+trial distributed in the `agridat` package -- so every figure below comes from
+data you can load yourself. The dataset is documented in `agridat` and originates
+with Besag and Higdon (1999).
+
+## A real row-column trial
+
+The trial is laid out as a row-by-column grid of plots within each of six
+environments (`county`). We take one environment and treat its plot grid as the
+spatial field. Six plots carry a missing yield; `gpfield` drops incomplete rows
+before fitting.
+
+```{r data}
+if (!requireNamespace("agridat", quietly = TRUE)) {
+  knitr::knit_exit()
+}
+met <- agridat::besag.met
+field <- met[met$county == "C1", c("row", "col", "yield")]
+str(field)
+sum(is.na(field$yield))
+```
+
+## Fitting the Gaussian process
+
+A model is declared with `gpfield_spec()` -- which covariance kernel, which
+coordinate columns, which response -- and fitted with `gp_fit()`. The default is
+a `Matern` covariance at smoothness `1.5`, the usual choice for field data: it is
+once-differentiable rather than the squared-exponential's infinite smoothness,
+which avoids over-smoothing real agronomic gradients.
+
+```{r fit}
+spec <- gpfield_spec(coords = c("row", "col"), response = "yield")
+fit <- gp_fit(spec, field, seed = 1L)
+fit
+```
+
+The fit reports an estimated correlation `range` in raw plot units. That range is
+the quantity the rest of the package reasons about: a prediction finer than the
+range is unsupported, and the fit makes that explicit instead of leaving it
+implicit.
+
+## Smoothing the surface
+
+`gp_field_smooth()` is the one-call path from a row-column layout to a smoothed
+surface. Here we refine the prediction grid to twice the plot resolution and draw
+the result (the plot needs `ggplot2`).
+
+```{r smooth, fig.alt = "Smoothed barley-yield surface over the row-column plot grid"}
+smoothed <- gp_field_smooth(field, response = "yield", refine = 2L, seed = 1L)
+smoothed$prediction
+
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  gp_field_plot(smoothed)
+}
+```
+
+## Change of support: from plots to blocks
+
+The defining capability is predicting at a *different support*. A point process
+(the plots) can be aggregated to an areal one (paddock-scale blocks). The block
+average is the integral of the latent field over the block, and -- crucially --
+its predictive variance is the full quadratic form over the within-block
+covariance, so spatial correlation within the block is carried into the
+block-average uncertainty.
+
+```{r blocks}
+blocks <- block_support(
+  lower = rbind(c(1, 1), c(10, 1)),
+  upper = rbind(c(9, 11), c(18, 11)),
+  ids = c("south", "north")
+)
+block_pred <- gp_predict(fit, support = "block", blocks = blocks, seed = 1L)
+block_pred@locations
+data.frame(block = block_pred@locations$block,
+           mean = round(block_pred@mean, 1),
+           sd = round(block_pred@sd, 2))
+```
+
+Why this is not a cell-wise average: a naive mean of `n` point predictions would
+assume independence and shrink the block-average standard deviation by
+`1 / sqrt(n)`. Because neighbouring locations within a block are positively
+correlated, the change-of-support variance is materially larger -- the honest
+uncertainty for a paddock-scale claim.
+
+```{r cos-compare}
+centre <- gp_predict(fit, data.frame(row = 5, col = 6))
+naive_sd <- centre@sd / sqrt(blocks$n_quad)
+c(change_of_support_sd = round(block_pred@sd[[1L]], 3),
+  naive_independence_sd = round(naive_sd, 4))
+```
+
+## Honest abstention
+
+`gpfield` refuses a prediction the data cannot support. Two refusals:
+
+```{r abstain-coarse}
+# A query grid spaced far more coarsely than the estimated range.
+coarse <- gp_predict(fit, data.frame(row = c(1, 50, 100),
+                                     col = c(1, 50, 100)))
+is_gpfield_abstention(coarse)
+coarse
+```
+
+```{r abstain-gap}
+# A block placed far outside the trial footprint.
+far <- block_support(lower = rbind(c(100, 100)), upper = rbind(c(110, 110)))
+gp_predict(fit, support = "block", blocks = far, seed = 1L)
+```
+
+Each abstention carries a machine-readable `reason` and the numbers behind it, so
+a downstream caller -- or the orchestration layer -- can branch on the refusal
+rather than catch an exception or, worse, trust a confident wrong value.
+
+## Emitting the orchestra contract
+
+`gpfield` is an orchestra member, so a result is expressible in the federation's
+shared manifest contract: a versioned, integrity-hashed object every member emits
+or consumes. `as_orchestra_manifest()` adapts a prediction into it, and
+`verify_manifest()` confirms the payload was not tampered with.
+
+```{r manifest}
+point_pred <- gp_predict(fit, field[, c("row", "col")])
+manifest <- as_orchestra_manifest(point_pred)
+manifest
+verify_manifest(manifest)$ok
+```
+
+The smoothed surface now composes directly with the orchestra's calibration,
+uncertainty-quantification, causal-inference and decision members, with no
+special-casing on either side.
+
+## A note on scale
+
+The exact solver is cubic in the number of observations -- comfortable for the
+hundreds-to-low-thousands of plots a multi-environment trial carries. For larger
+fields a low-rank / Nystrom approximation is a planned extension; the exact
+solver is the version-0.1 backend.
+
+## Reference
+
+Besag, J. and Higdon, D. (1999). Bayesian analysis of agricultural field
+experiments. *Journal of the Royal Statistical Society, Series B*, 61(4),
+691--746. Dataset distributed in the `agridat` package.
