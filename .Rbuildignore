@@ -14,3 +14,4 @@
 ^.*\.cairn\.md$
 ^cran-comments\.md$
 ^CRAN-SUBMISSION$
+^CONSTELLATION_MEMBER\.md$
