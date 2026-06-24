@@ -40,7 +40,8 @@ gpfield_spec_class <- S7::new_class(
     time         = S7::new_property(S7::class_character,
                                     default = NA_character_),
     response     = S7::class_character,
-    nugget       = S7::new_property(S7::class_numeric, default = 1e-6)
+    nugget       = S7::new_property(S7::class_numeric, default = 1e-6),
+    anisotropic  = S7::new_property(S7::class_logical, default = FALSE)
   ),
   validator = function(self) {
     errs <- character(0)
@@ -154,6 +155,14 @@ gpfield_prediction_class <- S7::new_class(
 #' @param nugget Positive numeric jitter added to the kernel diagonal for
 #'   numerical conditioning. Distinct from the estimated observation-noise
 #'   variance, which is a fitted hyperparameter.
+#' @param anisotropic Logical. If `TRUE` and there are at least two coordinate
+#'   axes, fit one length-scale per axis (automatic relevance determination)
+#'   rather than a single isotropic length-scale. The kernel stays isotropic in a
+#'   per-axis-rescaled coordinate space, so each axis gets its own correlation
+#'   range -- the right model when a field varies on different scales along
+#'   different directions (an east-west tillage gradient versus a north-south
+#'   slope, or space versus a time axis). Default `FALSE` (a single length-scale,
+#'   the original behaviour).
 #'
 #' @returns A `gpfield_spec` S7 object.
 #'
@@ -163,6 +172,10 @@ gpfield_prediction_class <- S7::new_class(
 #' spec <- gpfield_spec(coords = c("x", "y"), response = "yield")
 #' spec
 #'
+#' # An anisotropic field: a separate length-scale per axis.
+#' aniso <- gpfield_spec(c("x", "y"), "yield", anisotropic = TRUE)
+#' aniso
+#'
 #' # A spatio-temporal specification with the squared-exponential kernel.
 #' st <- gpfield_spec(
 #'   coords = c("x", "y"), response = "ndvi", kernel = "se", time = "doy"
@@ -171,7 +184,8 @@ gpfield_prediction_class <- S7::new_class(
 #'
 #' @export
 gpfield_spec <- function(coords, response, kernel = "matern", nu = 1.5,
-                         time = NA_character_, nugget = 1e-6) {
+                         time = NA_character_, nugget = 1e-6,
+                         anisotropic = FALSE) {
   .check_kernel(kernel)
   if (kernel == "matern") {
     .check_nu(nu)
@@ -179,7 +193,8 @@ gpfield_spec <- function(coords, response, kernel = "matern", nu = 1.5,
   gpfield_spec_class(
     kernel = kernel, nu = as.numeric(nu),
     coords = as.character(coords), response = as.character(response),
-    time = as.character(time), nugget = as.numeric(nugget))
+    time = as.character(time), nugget = as.numeric(nugget),
+    anisotropic = isTRUE(anisotropic))
 }
 
 # S7 objects dispatch through S7's own method table, not S3 name-matching, so
@@ -193,7 +208,8 @@ S7::method(print, gpfield_spec_class) <- function(x, ...) {
   } else {
     "squared-exponential"
   }
-  cat(sprintf("  kernel:   %s\n", k))
+  cat(sprintf("  kernel:   %s%s\n", k,
+              if (isTRUE(x@anisotropic)) " (anisotropic)" else ""))
   cat(sprintf("  coords:   %s\n", paste(x@coords, collapse = ", ")))
   if (!is.na(x@time)) {
     cat(sprintf("  time:     %s\n", x@time))
@@ -204,12 +220,19 @@ S7::method(print, gpfield_spec_class) <- function(x, ...) {
 
 S7::method(print, gpfield_fit_class) <- function(x, ...) {
   cat("<gpfield_fit>\n")
-  cat(sprintf("  kernel:      %s\n", x@spec@kernel))
+  cat(sprintf("  kernel:      %s%s\n", x@spec@kernel,
+              if (isTRUE(x@hyper$anisotropic)) " (anisotropic)" else ""))
   cat(sprintf("  n training:  %d\n", length(x@y_raw)))
-  cat(sprintf("  length-scale (standardised): %.4g\n", x@hyper$ell))
+  if (isTRUE(x@hyper$anisotropic)) {
+    cat(sprintf("  range per axis (raw units):  %s\n",
+                paste(sprintf("%s = %.4g", names(x@hyper$range_axis),
+                              x@hyper$range_axis), collapse = ", ")))
+  } else {
+    cat(sprintf("  length-scale (standardised): %.4g\n", x@hyper$ell))
+    cat(sprintf("  range (raw units):           %.4g\n", x@hyper$range_raw))
+  }
   cat(sprintf("  marginal var / noise var:    %.4g / %.4g\n",
               x@hyper$sigma2, x@hyper$noise))
-  cat(sprintf("  range (raw units):           %.4g\n", x@hyper$range_raw))
   cat(sprintf("  log marginal likelihood:     %.4g\n", x@loglik))
   invisible(x)
 }

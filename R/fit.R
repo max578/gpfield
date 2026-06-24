@@ -135,6 +135,104 @@
        chol = chol_k, alpha = alpha, loglik = -opt$value)
 }
 
+# --- anisotropic (ARD) marginal likelihood -----------------------------------
+
+#' Negative marginal log-likelihood of an anisotropic GP at log-hyperparameters
+#'
+#' The automatic-relevance-determination counterpart of [.gp_neg_loglik()]: the
+#' length-scale is a vector, one per coordinate axis. Rather than change the
+#' isotropic kernel, each (already SD-standardised) axis is divided by its own
+#' length-scale and the isotropic kernel is evaluated on the resulting distance,
+#' which is exactly an anisotropic kernel on the original coordinates. The
+#' distance therefore depends on the length-scales and is recomputed inside the
+#' objective.
+#'
+#' @param log_par Numeric `(log sigma2, log ell_1, ..., log ell_p, log noise)`.
+#' @param xs Standardised training coordinate matrix (`n`-by-`p`).
+#' @param y Standardised response vector.
+#' @param kfun A covariance closure from [.kernel_fun()].
+#' @param nugget Diagonal jitter for conditioning.
+#'
+#' @returns A single numeric: the negative marginal log-likelihood.
+#' @noRd
+#' @keywords internal
+.gp_neg_loglik_ard <- function(log_par, xs, y, kfun, nugget) {
+  p <- ncol(xs)
+  sigma2 <- exp(log_par[[1L]])
+  ell <- exp(log_par[2L:(p + 1L)])
+  noise <- exp(log_par[[p + 2L]])
+  n <- length(y)
+  xss <- sweep(xs, 2L, ell, `/`)
+  d <- .pairwise_distance(xss, xss)
+  k <- kfun(d, sigma2, 1) + diag(noise + nugget, n)
+  chol_k <- tryCatch(chol(k), error = function(e) NULL)
+  if (is.null(chol_k)) {
+    return(1e10)
+  }
+  alpha <- backsolve(chol_k, backsolve(chol_k, y, transpose = TRUE))
+  log_det <- 2 * sum(log(diag(chol_k)))
+  quad <- drop(crossprod(y, alpha))
+  ll <- -0.5 * quad - 0.5 * log_det - 0.5 * n * log(2 * pi)
+  if (!is.finite(ll)) 1e10 else -ll
+}
+
+#' Fit anisotropic (per-axis) GP hyperparameters by marginal likelihood
+#'
+#' The ARD analogue of [.gp_fit_hyper()]: optimises `(sigma2, ell_1..ell_p,
+#' noise)` on the log scale, starting each axis length-scale from that axis's
+#' median pairwise distance. Returns the estimates, the per-axis-rescaled
+#' coordinates the Cholesky was computed on (so the caller can store the scaling
+#' in the standardisation and keep the stored kernel isotropic), and the achieved
+#' marginal log-likelihood.
+#'
+#' @param xs Standardised training coordinate matrix (`n`-by-`p`, `p >= 2`).
+#' @param y Standardised response vector.
+#' @param kfun A covariance closure from [.kernel_fun()].
+#' @param nugget Diagonal jitter for conditioning.
+#'
+#' @returns A list of the fitted anisotropic GP, or `NULL` when degenerate.
+#' @noRd
+#' @keywords internal
+.gp_fit_hyper_ard <- function(xs, y, kfun, nugget) {
+  p <- ncol(xs)
+  ell0 <- vapply(seq_len(p), function(j) {
+    dj <- as.numeric(stats::dist(xs[, j, drop = FALSE]))
+    dj <- dj[dj > 0]
+    m <- if (length(dj)) stats::median(dj) else 1
+    if (!is.finite(m) || m <= 0) 1 else m
+  }, numeric(1L))
+  start <- c(log(1), log(ell0), log(0.1))
+  fit_once <- function(par0) {
+    stats::optim(par0, .gp_neg_loglik_ard, xs = xs, y = y, kfun = kfun,
+                 nugget = nugget, method = "Nelder-Mead",
+                 control = list(maxit = 800L, reltol = 1e-8))
+  }
+  opt <- tryCatch(fit_once(start), error = function(e) NULL)
+  if (is.null(opt) || opt$value >= 1e10) {
+    return(NULL)
+  }
+  # Restart from the optimum settles the simplex in the higher-dimensional space.
+  opt2 <- tryCatch(fit_once(opt$par), error = function(e) NULL)
+  if (!is.null(opt2) && opt2$value < opt$value) {
+    opt <- opt2
+  }
+
+  sigma2 <- exp(opt$par[[1L]])
+  ell <- exp(opt$par[2L:(p + 1L)])
+  noise <- exp(opt$par[[p + 2L]])
+  n <- length(y)
+  xss <- sweep(xs, 2L, ell, `/`)
+  d <- .pairwise_distance(xss, xss)
+  k <- kfun(d, sigma2, 1) + diag(noise + nugget, n)
+  chol_k <- tryCatch(chol(k), error = function(e) NULL)
+  if (is.null(chol_k)) {
+    return(NULL)
+  }
+  alpha <- backsolve(chol_k, backsolve(chol_k, y, transpose = TRUE))
+  list(sigma2 = sigma2, ell = ell, noise = noise,
+       chol = chol_k, alpha = alpha, loglik = -opt$value, coords_std = xss)
+}
+
 # --- public verb -------------------------------------------------------------
 
 #' Fit a gpfield Gaussian process to field or trial data
@@ -197,10 +295,16 @@ gp_fit <- function(spec, data, seed = NULL) {
     y_sd <- 1
   }
   ys <- (y_raw - y_mu) / y_sd
-  d <- .pairwise_distance(std$xs, std$xs)
   kfun <- .kernel_fun(spec@kernel, nu = spec@nu)
+  npar <- ncol(std$xs)
+  use_ard <- isTRUE(spec@anisotropic) && npar >= 2L
 
-  fit <- .gp_fit_hyper(d, ys, kfun, spec@nugget)
+  if (use_ard) {
+    fit <- .gp_fit_hyper_ard(std$xs, ys, kfun, spec@nugget)
+  } else {
+    d <- .pairwise_distance(std$xs, std$xs)
+    fit <- .gp_fit_hyper(d, ys, kfun, spec@nugget)
+  }
   if (is.null(fit)) {
     return(gpfield_abstention(
       "degenerate_fit",
@@ -208,16 +312,33 @@ gp_fit <- function(spec, data, seed = NULL) {
       scope = "gp_fit"))
   }
 
-  # Translate the standardised length-scale to a raw-units correlation range.
-  # With per-axis spreads the range is reported on the mean spread (the kernel is
-  # isotropic in standardised space); it is the figure the support logic uses.
-  range_raw <- fit$ell * mean(std$spread)
-  hyper <- list(sigma2 = fit$sigma2, ell = fit$ell, noise = fit$noise,
-                range_raw = range_raw)
+  if (use_ard) {
+    # Absorb the per-axis standardised length-scales into the per-axis spread, so
+    # the stored coordinates carry the anisotropy and the kernel stays isotropic
+    # (length-scale 1) over them. Every downstream verb -- point and block
+    # prediction, the support guard -- then reads `centre` / `spread` / `ell`
+    # exactly as in the isotropic case; nothing in predict.R changes. The
+    # raw-units correlation range along an axis is `spread_j * ell_j`.
+    effective_spread <- std$spread * fit$ell
+    coords_std <- fit$coords_std
+    spread_store <- effective_spread
+    range_axis <- stats::setNames(effective_spread, .coord_columns(spec))
+    hyper <- list(sigma2 = fit$sigma2, ell = 1, noise = fit$noise,
+                  range_raw = mean(effective_spread), anisotropic = TRUE,
+                  range_axis = range_axis, ell_standardised = fit$ell)
+  } else {
+    # Translate the single standardised length-scale to a raw-units correlation
+    # range (reported on the mean spread); it is the figure the support logic
+    # uses.
+    coords_std <- std$xs
+    spread_store <- std$spread
+    hyper <- list(sigma2 = fit$sigma2, ell = fit$ell, noise = fit$noise,
+                  range_raw = fit$ell * mean(std$spread), anisotropic = FALSE)
+  }
 
   gpfield_fit_class(
-    spec = spec, coords_raw = x_raw, coords_std = std$xs,
-    centre = std$centre, spread = std$spread,
+    spec = spec, coords_raw = x_raw, coords_std = coords_std,
+    centre = std$centre, spread = spread_store,
     y_raw = y_raw, y_mu = y_mu, y_sd = y_sd,
     hyper = hyper, chol = fit$chol, alpha = fit$alpha, loglik = fit$loglik,
     seed = if (is.null(seed)) NA_integer_ else as.integer(seed),

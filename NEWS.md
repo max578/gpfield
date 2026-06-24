@@ -1,3 +1,24 @@
+# gpfield 0.2.0
+
+## New features
+
+* `gpfield_spec(anisotropic = TRUE)` fits an **anisotropic** Gaussian process: one
+  length-scale per coordinate axis (automatic relevance determination) instead of
+  a single isotropic length-scale. Each axis's length-scale is estimated by
+  marginal likelihood and absorbed into that axis's standardisation, so the
+  stored kernel stays isotropic over the rescaled coordinates and every
+  downstream verb -- point and block prediction, change-of-support, the support
+  guard -- is unchanged. On a field that varies on different scales along
+  different directions this is a large accuracy gain: on the Branin function the
+  anisotropic fit cuts held-out error about 20-fold over the isotropic fit (to
+  roughly 0.05% of the function range) and matches a dedicated anisotropic GP
+  (`DiceKriging`). The fitted per-axis correlation ranges are reported by the
+  `gpfield_fit` print method and stored in `fit@hyper$range_axis`. The default
+  stays isotropic, so existing fits are unchanged. This resolves the constellation
+  `/stretch` finding that gpfield's single isotropic length-scale sat well above
+  an anisotropic oracle on a strongly anisotropic function. Re-grounding script:
+  `ORCHESTRA_dev/stretch/constellation/verify/v9_R4_gpfield_ard_regrounded.R`.
+
 # gpfield 0.1.0
 
 First release. `gpfield` enrols the orchestra's spatial member: change-of-support

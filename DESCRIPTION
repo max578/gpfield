@@ -1,7 +1,7 @@
 Package: gpfield
 Title: Change-of-Support Gaussian-Process Regression for Field and
     Multi-Environment-Trial Data
-Version: 0.1.0
+Version: 0.2.0
 Authors@R:
     person("Max", "Moldovan", , "max.moldovan@gmail.com",
            role = c("aut", "cre", "cph"),

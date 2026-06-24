@@ -10,7 +10,8 @@ gpfield_spec(
   kernel = "matern",
   nu = 1.5,
   time = NA_character_,
-  nugget = 1e-06
+  nugget = 1e-06,
+  anisotropic = FALSE
 )
 }
 \arguments{
@@ -33,6 +34,15 @@ spatio-temporal fit, or \code{NA} (default) for a purely spatial model.}
 \item{nugget}{Positive numeric jitter added to the kernel diagonal for
 numerical conditioning. Distinct from the estimated observation-noise
 variance, which is a fitted hyperparameter.}
+
+\item{anisotropic}{Logical. If \code{TRUE} and there are at least two coordinate
+axes, fit one length-scale per axis (automatic relevance determination)
+rather than a single isotropic length-scale. The kernel stays isotropic in a
+per-axis-rescaled coordinate space, so each axis gets its own correlation
+range -- the right model when a field varies on different scales along
+different directions (an east-west tillage gradient versus a north-south
+slope, or space versus a time axis). Default \code{FALSE} (a single length-scale,
+the original behaviour).}
 }
 \value{
 A \code{gpfield_spec} S7 object.
@@ -54,6 +64,10 @@ exponential imposes across real agronomic gradients.
 \examples{
 spec <- gpfield_spec(coords = c("x", "y"), response = "yield")
 spec
+
+# An anisotropic field: a separate length-scale per axis.
+aniso <- gpfield_spec(c("x", "y"), "yield", anisotropic = TRUE)
+aniso
 
 # A spatio-temporal specification with the squared-exponential kernel.
 st <- gpfield_spec(
