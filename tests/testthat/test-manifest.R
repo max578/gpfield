@@ -25,7 +25,7 @@ test_that("the manifest uses the federation field names and hash scheme", {
                     "outputs", "weights", "obs_target", "consumed_manifests",
                     "metadata", "timestamp", "data_hash") %in% props))
   expect_true(grepl("^sha256:", m@data_hash))
-  expect_identical(m@manifest_version, "1.1.0-draft")
+  expect_identical(m@manifest_version, "2.0.0-draft")
 })
 
 test_that("verify_manifest confirms an untampered manifest", {

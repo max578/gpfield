@@ -101,8 +101,8 @@
     kernel,
     se = function(d, sigma2, ell) .kernel_se(d, sigma2, ell),
     matern = function(d, sigma2, ell) .kernel_matern(d, sigma2, ell, nu = nu),
-    stop("unknown kernel: ", kernel,
-         " (expected \"se\" or \"matern\")", call. = FALSE))
+    stop("`kernel` must be one of se, matern; got \"", kernel, "\".",
+         call. = FALSE))
 }
 
 #' Validate a kernel name
@@ -136,4 +136,35 @@
     stop("`nu` must be one of 0.5, 1.5, 2.5.", call. = FALSE)
   }
   invisible(TRUE)
+}
+
+#' Effective-range multiple of a kernel's length-scale
+#'
+#' The multiple of the length-scale `ell` at which the kernel's correlation has
+#' decayed to `0.05` -- the "effective (practical) range" convention of spatial
+#' statistics. For the exponential covariance (Matern `nu = 1/2`) this recovers
+#' the textbook `range = 3 * length-scale`. The reported correlation range is
+#' `factor * ell` (in raw coordinate units once the standardisation spread is
+#' folded back in), so the abstention guards reason about the distance at which
+#' observations are effectively independent, not about the bare length-scale.
+#' The constants are the roots of each kernel's `correlation = 0.05` equation,
+#' solved once and tabulated.
+#'
+#' @param kernel Character kernel name (`"se"` or `"matern"`).
+#' @param nu Matern smoothness, ignored for `"se"`.
+#'
+#' @returns A single positive numeric multiple.
+#' @noRd
+#' @keywords internal
+.range_factor <- function(kernel, nu = 1.5) {
+  if (kernel == "se") {
+    return(2.4478)                       # exp(-0.5 x^2) = 0.05
+  }
+  if (isTRUE(all.equal(nu, 0.5))) {
+    return(2.9957)                       # exp(-x) = 0.05  (~ 3 * ell)
+  }
+  if (isTRUE(all.equal(nu, 2.5))) {
+    return(2.6467)                       # (1 + s + s^2/3) exp(-s) = 0.05
+  }
+  2.7391                                 # nu = 1.5: (1 + s) exp(-s) = 0.05
 }

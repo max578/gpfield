@@ -30,8 +30,10 @@ system is stored so that \code{\link[=gp_predict]{gp_predict()}} can predict che
 support or another.
 }
 \details{
-The estimated length-scale, returned in raw coordinate units as the
-correlation \code{range}, is the quantity the change-of-support and abstention
+The estimated length-scale is reported in raw coordinate units as the
+effective (practical) correlation \code{range} -- the distance at which the
+covariance has decayed to \code{0.05}, so points beyond it are effectively
+independent. That range is the quantity the change-of-support and abstention
 machinery reasons about: a prediction finer than the range is unsupported, and
 the fit makes that range explicit rather than implicit.
 }

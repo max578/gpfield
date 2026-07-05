@@ -58,8 +58,8 @@ fit
 #>   kernel:      matern
 #>   n training:  100
 #>   length-scale (standardised): 4.34
+#>   range (raw units):           34.31
 #>   marginal var / noise var:    3.317 / 0.02171
-#>   range (raw units):           12.53
 #>   log marginal likelihood:     10.6
 
 # Predict two paddock-scale block averages (change of support).
@@ -71,8 +71,8 @@ gp_predict(fit, support = "block", blocks = blocks, seed = 1L)
 #> <gpfield_prediction>
 #>   support:   block
 #>   locations: 2
-#>   mean range: [4.732, 4.784]
-#>   sd range:   [0.04048, 0.04168]
+#>   mean range: [4.725, 4.778]
+#>   sd range:   [0.04003, 0.04003]
 
 # Ask for a resolution the field cannot support: gpfield abstains.
 gp_predict(fit, data.frame(row = c(1, 60), col = c(1, 60)))
@@ -80,7 +80,7 @@ gp_predict(fit, data.frame(row = c(1, 60), col = c(1, 60)))
 #> [1] "range_too_short"
 #> 
 #> $detail
-#> [1] "query spacing 83.44 exceeds 1 x the estimated range 12.53; the field cannot be resolved this finely"
+#> [1] "query spacing 83.44 exceeds 1 x the estimated range 34.31; the field cannot be resolved this finely"
 #> 
 #> $scope
 #> [1] "gp_predict"
@@ -90,7 +90,7 @@ gp_predict(fit, data.frame(row = c(1, 60), col = c(1, 60)))
 #> [1] 83.4386
 #> 
 #> $diagnostics$range
-#> [1] 12.52809
+#> [1] 34.31482
 #> 
 #> $diagnostics$spacing_tol
 #> [1] 1

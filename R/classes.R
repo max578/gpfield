@@ -151,7 +151,10 @@ gpfield_prediction_class <- S7::new_class(
 #' @param nu Matern smoothness; one of `0.5`, `1.5` (default) or `2.5`. Ignored
 #'   for the squared-exponential kernel.
 #' @param time Optional character scalar naming a time column for a
-#'   spatio-temporal fit, or `NA` (default) for a purely spatial model.
+#'   spatio-temporal fit, or `NA` (default) for a purely spatial model. When a
+#'   time axis is present the fit is anisotropic by necessity -- a unit of space
+#'   and a unit of time are not exchangeable, so time is given its own
+#'   length-scale even if `anisotropic` is left at its default `FALSE`.
 #' @param nugget Positive numeric jitter added to the kernel diagonal for
 #'   numerical conditioning. Distinct from the estimated observation-noise
 #'   variance, which is a fitted hyperparameter.

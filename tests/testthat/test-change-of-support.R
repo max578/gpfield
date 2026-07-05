@@ -70,6 +70,21 @@ test_that("block prediction is reproducible under a fixed quadrature seed", {
   expect_equal(a@sd, b@sd)
 })
 
+test_that("block prediction is deterministic without a seed and leaves the RNG alone", {
+  # The quadrature is a deterministic tensor grid: reproducible with no seed, and
+  # it must not mutate the caller's global random stream.
+  fit <- .fitted_field()
+  bl <- block_support(lower = rbind(c(1, 1)), upper = rbind(c(6, 6)))
+  set.seed(123L)
+  before <- .Random.seed
+  a <- gp_predict(fit, support = "block", blocks = bl)
+  after <- .Random.seed
+  b <- gp_predict(fit, support = "block", blocks = bl)
+  expect_identical(before, after)             # no global-RNG side effect
+  expect_equal(a@mean, b@mean)                # deterministic without a seed
+  expect_equal(a@sd, b@sd)
+})
+
 test_that("block support requires a block_support object and matching axes", {
   fit <- .fitted_field()
   expect_error(gp_predict(fit, support = "block", blocks = list()),

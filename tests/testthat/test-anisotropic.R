@@ -62,6 +62,46 @@ test_that("change-of-support still works under an anisotropic fit", {
   expect_true(is.finite(blk@mean) && is.finite(blk@sd))
 })
 
+test_that("the point-support guard abstains per-axis under an anisotropic fit", {
+  set.seed(6L)
+  # A slow oscillation in x (long correlation range) and a fast one in y (short
+  # range), both finite, so the per-axis guard must judge each axis on its own.
+  g <- expand.grid(x = seq(0, 30, by = 2), y = seq(0, 30, by = 2))
+  g$z <- sin(0.25 * g$x) + sin(1.2 * g$y) + stats::rnorm(nrow(g), 0, 0.1)
+  fit <- gp_fit(gpfield_spec(c("x", "y"), "z", anisotropic = TRUE), g, seed = 6L)
+  ra <- fit@hyper$range_axis
+  skip_if_not(ra[["y"]] < ra[["x"]] && ra[["x"]] > 2,
+              "fit not anisotropic enough for this assertion")
+
+  # Fine on x (step 2, within the long x-range), coarse on y (past the short
+  # y-range): the guard should abstain and name the y axis. A fixed point count
+  # keeps the y grid from collapsing when the y-range is large.
+  step_y <- 1.5 * ra[["y"]]
+  q <- expand.grid(x = seq(0, 30, by = 2),
+                   y = seq(0, by = step_y, length.out = 8L))
+  out <- gp_predict(fit, q, spacing_tol = 1)
+  expect_true(is_gpfield_abstention(out))
+  expect_identical(out$reason, "range_too_short")
+  expect_identical(out$diagnostics$axis, "y")
+})
+
+test_that("a spatio-temporal fit is auto-anisotropic and predicts at point support", {
+  set.seed(8L)
+  g <- expand.grid(x = seq_len(6L), y = seq_len(6L), t = seq_len(4L))
+  g$z <- 0.2 * g$x + 0.1 * g$y + 0.5 * g$t + stats::rnorm(nrow(g), 0, 0.1)
+  fit <- gp_fit(gpfield_spec(c("x", "y"), "z", time = "t"), g, seed = 8L)
+  expect_true(fit@hyper$anisotropic)              # time forces ARD
+  expect_length(fit@hyper$range_axis, 3L)         # x, y and t each get a range
+
+  pred <- gp_predict(fit, g[, c("x", "y", "t")], spacing_tol = 100)
+  expect_true(S7::S7_inherits(pred, gpfield_prediction_class))
+  expect_equal(length(pred@mean), nrow(g))
+  # The trait rises steeply in time; the prediction should track it.
+  lo <- gp_predict(fit, data.frame(x = 3, y = 3, t = 1))
+  hi <- gp_predict(fit, data.frame(x = 3, y = 3, t = 4))
+  expect_gt(hi@mean, lo@mean)
+})
+
 test_that("the isotropic path is unchanged by the anisotropic addition", {
   set.seed(5L)
   g <- expand.grid(x = seq_len(8L), y = seq_len(8L))

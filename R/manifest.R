@@ -17,14 +17,41 @@
 # load-bearing invariants, and they are matched exactly.
 
 # The manifest schema version this member emits. Tracks the reference
-# implementation; bump only with an additive (x.y) or breaking (x.0) change there.
-MANIFEST_VERSION <- "1.1.0-draft"
+# implementation (`ORCHESTRA_dev/integration/orchestra_manifest.R`); bump only
+# with an additive (x.y) or breaking (x.0) change there. The 2.0.0 major bump was
+# a breaking change to the integrity-hash scheme (see `.hash_payload`): the hash
+# is now computed over version-stable serialised bytes so a manifest verifies
+# across R versions. A gpfield manifest and a reference manifest of the same
+# payload therefore carry the same `data_hash`, verified by
+# `tests/testthat/test-contract-parity.R`.
+MANIFEST_VERSION <- "2.0.0-draft"
 
 # The inferential-target enum, kept identical to the reference contract so a
-# consumer's dispatch never sees an unknown token.
+# consumer's dispatch never sees an unknown token. `structure` (a recovered
+# causal / graphical-model edge set) was added to the reference on 2026-06-24.
 .INFERENTIAL_TARGETS <- c("parameters", "predictions",
                           "treatment_effects", "decisions",
-                          "breeding_values", "marker_associations")
+                          "breeding_values", "marker_associations",
+                          "structure")
+
+#' SHA-256 over version-stable serialised bytes
+#'
+#' Serialisation is pinned to format 2 and its fixed 14-byte header (magic,
+#' format, writer / minimum R versions) is dropped before hashing: those bytes
+#' are the only version-varying part, so a manifest emitted under one R version
+#' verifies under any other. Byte-identical to the reference contract's `.sha256`
+#' (`ORCHESTRA_dev/integration/orchestra_manifest.R`, contract 2.0.0).
+#'
+#' @param obj The object to hash.
+#'
+#' @returns A single hex string (no prefix).
+#' @noRd
+#' @keywords internal
+.sha256 <- function(obj) {
+  raw <- serialize(obj, connection = NULL, version = 2L)
+  raw <- raw[-seq_len(14L)]
+  digest::digest(raw, algo = "sha256", serialize = FALSE)
+}
 
 #' Payload integrity hash matching the orchestra contract
 #'
@@ -42,8 +69,7 @@ MANIFEST_VERSION <- "1.1.0-draft"
 .hash_payload <- function(params, outputs, weights, obs_target, seed,
                           summary = NULL) {
   obj <- list(params, outputs, weights, obs_target, seed, summary)
-  raw <- serialize(obj, connection = NULL)
-  paste0("sha256:", digest::digest(raw, algo = "sha256", serialize = FALSE))
+  paste0("sha256:", .sha256(obj))
 }
 
 # --- the contract class ------------------------------------------------------
@@ -100,6 +126,15 @@ orchestra_manifest <- S7::new_class(
     }
     if (length(self@data_hash) != 1L) {
       errs <- c(errs, "`data_hash` must be a single string")
+    }
+    # Reference fork 3: a derived manifest must carry its provenance lineage.
+    # gpfield emits only primary (non-derived) manifests, so this never fires on
+    # its own output; it is kept to stay a faithful structural match.
+    if (isTRUE(self@metadata$derived) &&
+        length(self@consumed_manifests) < 1L) {
+      errs <- c(errs, paste0("a derived manifest must record >= 1 ",
+                             "`consumed_manifests` (provenance lineage is ",
+                             "required, not optional)"))
     }
     if (length(errs) == 0L) NULL else paste(errs, collapse = "; ")
   }
@@ -207,10 +242,8 @@ S7::method(as_orchestra_manifest, gpfield_prediction_class) <-
 
     seed <- as.integer(fit@seed)
     dh <- .hash_payload(data.frame(), outputs, NULL, NULL, seed)
-    rid <- run_id %||% paste0(
-      "gpfield-",
-      substr(sub("^sha256:", "", .hash_payload(data.frame(), outputs,
-                                               NULL, NULL, seed)), 1L, 12L))
+    rid <- run_id %||% paste0("gpfield-",
+                              substr(sub("^sha256:", "", dh), 1L, 12L))
 
     orchestra_manifest(
       manifest_version   = MANIFEST_VERSION,

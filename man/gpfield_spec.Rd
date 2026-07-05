@@ -29,7 +29,10 @@ to the coordinate set as an extra, separately-scaled axis.}
 for the squared-exponential kernel.}
 
 \item{time}{Optional character scalar naming a time column for a
-spatio-temporal fit, or \code{NA} (default) for a purely spatial model.}
+spatio-temporal fit, or \code{NA} (default) for a purely spatial model. When a
+time axis is present the fit is anisotropic by necessity -- a unit of space
+and a unit of time are not exchangeable, so time is given its own
+length-scale even if \code{anisotropic} is left at its default \code{FALSE}.}
 
 \item{nugget}{Positive numeric jitter added to the kernel diagonal for
 numerical conditioning. Distinct from the estimated observation-noise

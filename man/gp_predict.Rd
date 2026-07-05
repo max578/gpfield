@@ -34,8 +34,10 @@ verb abstains. Default \code{1}.}
 multiple of the estimated range before the verb abstains with
 \code{"range_too_short"}. Default \code{1} (spacing may not exceed the range).}
 
-\item{seed}{Optional integer seed for the block quadrature draws
-(reproducible change-of-support).}
+\item{seed}{Retained for backward compatibility. Block quadrature is now
+deterministic (a tensor grid, not Monte-Carlo draws), so a block prediction
+is reproducible without a seed and never perturbs the caller's random
+stream; this argument no longer affects the result.}
 }
 \value{
 A \code{gpfield_prediction} S7 object on success, or a

@@ -1,3 +1,86 @@
+# gpfield 0.3.0
+
+A correctness, performance and methodology pass over the exact solver and the
+change-of-support machinery, plus a re-grounding of the orchestra manifest
+against the federation contract. The public API is unchanged.
+
+## Bug fixes
+
+* The block-support guard (`support = "block"`) counted supporting observations
+  from a per-axis distance that was silently miscomputed for a block straddling
+  the field boundary -- a coordinate-recycling error that could over- or
+  under-state the count and so flip a `support_gap` abstention. The per-axis gap
+  is now computed correctly, checked against an independent brute-force count.
+
+* `gp_predict()` no longer mutates the caller's global random-number stream. The
+  block quadrature previously seeded the global RNG as a side effect; it is now a
+  deterministic tensor grid, so a block prediction is reproducible with no seed
+  and leaves `.Random.seed` untouched. The `seed` argument is retained for
+  backward compatibility but no longer affects the result.
+
+## Performance
+
+* Point and grid prediction no longer forms the full query-by-query posterior
+  covariance when only the marginal variances are needed. A fine prediction grid
+  that previously allocated an `m`-by-`m` matrix (hundreds of megabytes on a
+  refined field) now costs `O(m n)`, so `gp_field_smooth(refine = ...)` scales to
+  fine grids. The block-support path, which genuinely needs the full within-block
+  covariance, is unchanged.
+
+* The marginal-likelihood objective adds noise to the kernel diagonal in place
+  rather than allocating a fresh diagonal matrix each optimiser step, the
+  anisotropic objective reuses precomputed per-axis squared differences instead
+  of re-forming the pairwise distance every evaluation, and the point-support
+  spacing guard computes its nearest-neighbour spacing in row blocks, bounding
+  peak memory on large query grids.
+
+## Methodology
+
+* **Effective correlation range.** The range a fit reports, and the range the
+  abstention guards reason about, is now the effective (practical) range -- the
+  distance at which the covariance decays to 0.05 -- rather than the bare
+  length-scale. For the exponential kernel this is the textbook three-times-the-
+  length-scale. `spacing_tol` is therefore measured in effective ranges.
+
+* **Per-axis abstention under anisotropy.** With an anisotropic fit the support
+  guards now reason per axis: a query resolved finely along a long-range axis is
+  no longer condemned by a short-range one, and a block's supporting reach is
+  per-axis. The isotropic path is unchanged.
+
+* **Spatio-temporal fits are anisotropic by default.** When a `time` axis is
+  given, the fit estimates a separate length-scale for time rather than coupling
+  space and time through one isotropic length-scale -- a unit of space and a unit
+  of time are not exchangeable. A purely spatial fit follows the `anisotropic`
+  flag as before.
+
+* **Deterministic block quadrature.** The change-of-support integral is computed
+  on a deterministic tensor midpoint grid rather than by uniform Monte-Carlo
+  sampling, which converges faster on the smooth latent fields a GP represents
+  and removes the seed dependence.
+
+* **More robust hyperparameter fitting.** The marginal-likelihood optimisation
+  runs from several length-scale starts and keeps the best, guarding against the
+  local optima the single-start simplex settled into on multi-scale fields.
+
+## Orchestra contract
+
+* The emitted `orchestra_manifest` is re-grounded against the federation
+  reference contract (`orchestra_manifest.R`, schema `2.0.0-draft`). The payload
+  integrity hash now serialises to a version-stable byte layout -- the format-2
+  header is dropped before hashing -- so a gpfield manifest verifies across R
+  versions and carries the same `data_hash` as a reference manifest of the same
+  payload. The previous scheme was fragile across R versions and would not have
+  verified under the current federation `verify_manifest()`. A new parity test
+  grounds the property set, the inferential-target enum and the hash scheme
+  against a snapshot of the reference. The `structure` inferential target is
+  added to the accepted enum.
+
+## Testing
+
+* An independent-oracle test recomputes the GP posterior from scratch with
+  explicit matrix algebra sharing no code path with the package, grounding the
+  central mathematical claim rather than checking the package against itself.
+
 # gpfield 0.2.0
 
 ## New features

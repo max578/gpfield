@@ -95,13 +95,41 @@ print.gpfield_block_support <- function(x, ...) {
 .gp_posterior <- function(fit, xq_std, kfun) {
   sigma2 <- fit@hyper$sigma2
   ell <- fit@hyper$ell
-  d_sq <- .pairwise_distance(xq_std, fit@coords_std)
-  k_star <- kfun(d_sq, sigma2, ell)
+  d_qx <- .pairwise_distance(xq_std, fit@coords_std)
+  k_star <- kfun(d_qx, sigma2, ell)
   mean_s <- as.numeric(k_star %*% fit@alpha)
   v <- backsolve(fit@chol, t(k_star), transpose = TRUE)
   d_qq <- .pairwise_distance(xq_std, xq_std)
   cov_s <- kfun(d_qq, sigma2, ell) - crossprod(v)
   list(mean = mean_s, cov = cov_s)
+}
+
+#' GP posterior mean and marginal variance (diagonal only) at query points
+#'
+#' The point-support path needs only the posterior mean and the per-query
+#' variance, not the full cross-covariance. Forming only the diagonal keeps the
+#' cost `O(m n)` in memory rather than the `O(m^2)` of a full covariance, so a
+#' fine prediction grid scales. The stationary prior variance on the diagonal is
+#' `sigma2`, so the marginal posterior variance is `sigma2` minus the squared
+#' column norms of the whitened cross-covariance.
+#'
+#' @param fit A `gpfield_fit`.
+#' @param xq_std Standardised query coordinate matrix.
+#' @param kfun The fit's covariance closure.
+#'
+#' @returns A list with the standardised-scale posterior `mean` and per-query
+#'   `var` (the diagonal of the latent posterior covariance).
+#' @noRd
+#' @keywords internal
+.gp_posterior_diag <- function(fit, xq_std, kfun) {
+  sigma2 <- fit@hyper$sigma2
+  ell <- fit@hyper$ell
+  d_qx <- .pairwise_distance(xq_std, fit@coords_std)
+  k_star <- kfun(d_qx, sigma2, ell)
+  mean_s <- as.numeric(k_star %*% fit@alpha)
+  v <- backsolve(fit@chol, t(k_star), transpose = TRUE)
+  var_s <- pmax(sigma2 - colSums(v^2), 0)
+  list(mean = mean_s, var = var_s)
 }
 
 # --- public verb -------------------------------------------------------------
@@ -139,8 +167,10 @@ print.gpfield_block_support <- function(x, ...) {
 #' @param spacing_tol Numeric: the point grid's spacing may be at most this
 #'   multiple of the estimated range before the verb abstains with
 #'   `"range_too_short"`. Default `1` (spacing may not exceed the range).
-#' @param seed Optional integer seed for the block quadrature draws
-#'   (reproducible change-of-support).
+#' @param seed Retained for backward compatibility. Block quadrature is now
+#'   deterministic (a tensor grid, not Monte-Carlo draws), so a block prediction
+#'   is reproducible without a seed and never perturbs the caller's random
+#'   stream; this argument no longer affects the result.
 #'
 #' @returns A `gpfield_prediction` S7 object on success, or a
 #'   [gpfield_abstention()] when the support cannot bear the request.
@@ -175,7 +205,7 @@ gp_predict <- function(fit, newdata = NULL, support = c("point", "block"),
   if (support == "point") {
     return(.gp_predict_point(fit, newdata, kfun, spacing_tol))
   }
-  .gp_predict_block(fit, blocks, kfun, min_support_ranges, seed)
+  .gp_predict_block(fit, blocks, kfun, min_support_ranges)
 }
 
 # --- point support -----------------------------------------------------------
@@ -203,25 +233,18 @@ gp_predict <- function(fit, newdata = NULL, support = c("point", "block"),
   xq <- as.matrix(newdata[, coord_cols, drop = FALSE])
 
   # Support guard: a grid spaced more coarsely than the correlation range asks
-  # the GP to interpolate between effectively independent observations.
-  spacing <- .query_spacing(xq)
-  range_raw <- fit@hyper$range_raw
-  if (is.finite(spacing) && spacing > spacing_tol * range_raw) {
-    return(gpfield_abstention(
-      "range_too_short",
-      sprintf(paste0("query spacing %.4g exceeds %.2g x the estimated range ",
-                     "%.4g; the field cannot be resolved this finely"),
-              spacing, spacing_tol, range_raw),
-      scope = "gp_predict",
-      diagnostics = list(spacing = spacing, range = range_raw,
-                         spacing_tol = spacing_tol)))
+  # the GP to interpolate between effectively independent observations. Under an
+  # anisotropic fit the guard is applied per axis (see .point_support_guard).
+  guard <- .point_support_guard(xq, fit, spacing_tol)
+  if (!is.null(guard)) {
+    return(guard)
   }
 
   xq_std <- .apply_standardisation(xq, fit@centre, fit@spread)
-  post <- .gp_posterior(fit, xq_std, kfun)
+  post <- .gp_posterior_diag(fit, xq_std, kfun)
   mean_raw <- post$mean * fit@y_sd + fit@y_mu
-  var_s <- pmax(diag(post$cov), 0) + fit@hyper$noise
-  sd_raw <- sqrt(var_s) * fit@y_sd
+  var_s <- post$var + fit@hyper$noise
+  sd_raw <- sqrt(pmax(var_s, 0)) * fit@y_sd
 
   gpfield_prediction_class(
     support = "point", locations = as.data.frame(newdata),
@@ -248,7 +271,7 @@ gp_predict <- function(fit, newdata = NULL, support = c("point", "block"),
 #' @returns A `gpfield_prediction` or a `gpfield_abstention`.
 #' @noRd
 #' @keywords internal
-.gp_predict_block <- function(fit, blocks, kfun, min_support_ranges, seed) {
+.gp_predict_block <- function(fit, blocks, kfun, min_support_ranges) {
   if (!inherits(blocks, "gpfield_block_support")) {
     stop("`blocks` must be a `gpfield_block_support` (see `block_support()`) ",
          "when `support = \"block\"`.", call. = FALSE)
@@ -261,11 +284,15 @@ gp_predict <- function(fit, newdata = NULL, support = c("point", "block"),
     stop("`blocks` must have one column per spatial coordinate axis (",
          length(fit@spec@coords), ").", call. = FALSE)
   }
-  if (!is.null(seed)) {
-    set.seed(as.integer(seed))
-  }
 
   range_raw <- fit@hyper$range_raw
+  # The supporting reach is per-axis under an anisotropic fit (each spatial axis
+  # carries its own correlation range), a single scalar otherwise.
+  reach <- if (isTRUE(fit@hyper$anisotropic)) {
+    min_support_ranges * as.numeric(fit@hyper$range_axis)
+  } else {
+    min_support_ranges * range_raw
+  }
   nb <- nrow(blocks$lower)
   means <- numeric(nb)
   sds <- numeric(nb)
@@ -278,8 +305,7 @@ gp_predict <- function(fit, newdata = NULL, support = c("point", "block"),
     # Support guard: at least one training point within `min_support_ranges`
     # correlation ranges of this block's footprint, else there is nothing to
     # anchor the block average on.
-    n_near[b] <- .count_near_block(fit@coords_raw, lo, hi,
-                                   min_support_ranges * range_raw)
+    n_near[b] <- .count_near_block(fit@coords_raw, lo, hi, reach)
     if (n_near[b] < 1L) {
       return(gpfield_abstention(
         "support_gap",
@@ -322,18 +348,28 @@ gp_predict <- function(fit, newdata = NULL, support = c("point", "block"),
 
 # --- internal helpers --------------------------------------------------------
 
-#' Monte-Carlo quadrature points uniform over a rectangular block
+#' Deterministic tensor-grid quadrature points over a rectangular block
+#'
+#' A tensor product of equal-cell midpoints on each axis -- the midpoint rule.
+#' Deterministic (no RNG, so a block prediction is reproducible without a seed
+#' and never perturbs the caller's random stream) and, for the smooth latent
+#' fields a GP represents, converges far faster than uniform Monte-Carlo
+#' sampling. The per-axis resolution is chosen so the point count approximates
+#' the requested `n_quad`.
 #'
 #' @param lo,hi Numeric lower / upper bounds per axis.
-#' @param n_quad Integer number of points.
+#' @param n_quad Integer target number of points.
 #'
-#' @returns An `n_quad`-by-`p` matrix of quadrature points.
+#' @returns A roughly-`n_quad`-by-`p` matrix of quadrature points.
 #' @noRd
 #' @keywords internal
 .block_quadrature <- function(lo, hi, n_quad) {
   p <- length(lo)
-  u <- matrix(stats::runif(n_quad * p), nrow = n_quad, ncol = p)
-  sweep(sweep(u, 2L, hi - lo, `*`), 2L, lo, `+`)
+  per_axis <- max(2L, round(n_quad^(1 / p)))
+  mids <- lapply(seq_len(p), function(j) {
+    lo[[j]] + (seq_len(per_axis) - 0.5) / per_axis * (hi[[j]] - lo[[j]])
+  })
+  as.matrix(expand.grid(mids))
 }
 
 #' Count training points within a reach of a block's footprint
@@ -345,7 +381,8 @@ gp_predict <- function(fit, newdata = NULL, support = c("point", "block"),
 #' @param coords Raw training coordinates (spatial axes; a time column, if any,
 #'   sits in the trailing column and is ignored here).
 #' @param lo,hi The block bounds.
-#' @param reach The supported reach in raw units.
+#' @param reach The supported reach in raw units: a single scalar (isotropic) or
+#'   one value per axis (anisotropic); recycled per axis by the comparison.
 #'
 #' @returns The integer count of supporting points.
 #' @noRd
@@ -356,8 +393,11 @@ gp_predict <- function(fit, newdata = NULL, support = c("point", "block"),
   sp <- coords[, seq_len(p), drop = FALSE]
   below <- sweep(sp, 2L, lo, `<`)
   above <- sweep(sp, 2L, hi, `>`)
-  gap_lo <- sweep(lo - sp, 2L, 0, `+`)
-  gap_hi <- sweep(sp - hi, 2L, 0, `+`)
+  # Per-axis gap to the block: `lo[j] - sp[,j]` below the block, `sp[,j] - hi[j]`
+  # above it (both positive there), zero inside. `sweep(..., 2L, ...)` applies
+  # the bound per column; a bare `lo - sp` would recycle the bound down the rows.
+  gap_lo <- sweep(sp, 2L, lo, function(a, b) b - a)
+  gap_hi <- sweep(sp, 2L, hi, `-`)
   gap <- matrix(0, nrow = nrow(sp), ncol = p)
   gap[below] <- gap_lo[below]
   gap[above] <- gap_hi[above]
@@ -368,8 +408,10 @@ gp_predict <- function(fit, newdata = NULL, support = c("point", "block"),
 #' Median nearest-neighbour spacing of a query grid (raw units)
 #'
 #' A robust scalar summary of how finely a query grid is laid out, used by the
-#' point-support guard. Returns the median nearest-neighbour distance over the
-#' (spatial) query coordinates.
+#' isotropic point-support guard. Returns the median nearest-neighbour distance
+#' over the (spatial) query coordinates. Computed in row blocks so peak memory is
+#' `O(block x m)` rather than the `O(m^2)` of a full distance matrix, keeping a
+#' fine query grid affordable.
 #'
 #' @param xq Raw query coordinate matrix.
 #'
@@ -378,12 +420,89 @@ gp_predict <- function(fit, newdata = NULL, support = c("point", "block"),
 #' @keywords internal
 .query_spacing <- function(xq) {
   xq <- as.matrix(xq)
-  if (nrow(xq) < 2L) {
+  m <- nrow(xq)
+  if (m < 2L) {
     return(0)
   }
-  d <- .pairwise_distance(xq, xq)
-  diag(d) <- Inf
-  stats::median(apply(d, 1L, min))
+  block <- 1024L
+  mins <- numeric(m)
+  for (start in seq.int(1L, m, by = block)) {
+    idx <- start:min(start + block - 1L, m)
+    d <- .pairwise_distance(xq[idx, , drop = FALSE], xq)
+    for (k in seq_along(idx)) {
+      d[k, idx[[k]]] <- Inf                 # a point's distance to itself
+    }
+    mins[idx] <- apply(d, 1L, min)
+  }
+  stats::median(mins)
+}
+
+#' Per-axis minimum positive spacing of a query set (raw units)
+#'
+#' @param xq Raw query coordinate matrix.
+#'
+#' @returns A numeric vector, one per axis, of the smallest positive gap between
+#'   sorted unique values on that axis (`Inf` when an axis is constant).
+#' @noRd
+#' @keywords internal
+.axis_spacing <- function(xq) {
+  xq <- as.matrix(xq)
+  vapply(seq_len(ncol(xq)), function(j) {
+    u <- sort(unique(xq[, j]))
+    if (length(u) < 2L) Inf else min(diff(u))
+  }, numeric(1L))
+}
+
+#' Point-support abstention guard
+#'
+#' Decides whether a point query is too coarse for the fit's correlation range.
+#' Under an isotropic fit the median nearest-neighbour spacing is compared to the
+#' single estimated range; under an anisotropic fit each axis's own spacing is
+#' compared to that axis's range, so a grid resolved finely along a long-range
+#' axis is not condemned by a short-range one.
+#'
+#' @param xq Raw query coordinate matrix (coordinate axes in the fit's order).
+#' @param fit A `gpfield_fit`.
+#' @param spacing_tol The multiple of the range the spacing may reach.
+#'
+#' @returns A [gpfield_abstention()] with reason `"range_too_short"`, or `NULL`
+#'   when the query is supported.
+#' @noRd
+#' @keywords internal
+.point_support_guard <- function(xq, fit, spacing_tol) {
+  if (isTRUE(fit@hyper$anisotropic)) {
+    sp_axis <- .axis_spacing(xq)
+    rng_axis <- as.numeric(fit@hyper$range_axis)
+    viol <- is.finite(sp_axis) & sp_axis > spacing_tol * rng_axis
+    if (any(viol)) {
+      j <- which(viol)[[1L]]
+      return(gpfield_abstention(
+        "range_too_short",
+        sprintf(paste0("axis %s spacing %.4g exceeds %.2g x its estimated ",
+                       "range %.4g; the field cannot be resolved this finely ",
+                       "on that axis"),
+                names(fit@hyper$range_axis)[[j]], sp_axis[[j]], spacing_tol,
+                rng_axis[[j]]),
+        scope = "gp_predict",
+        diagnostics = list(axis = names(fit@hyper$range_axis)[[j]],
+                           spacing = sp_axis[[j]], range = rng_axis[[j]],
+                           spacing_tol = spacing_tol)))
+    }
+    return(NULL)
+  }
+  spacing <- .query_spacing(xq)
+  range_raw <- fit@hyper$range_raw
+  if (is.finite(spacing) && spacing > spacing_tol * range_raw) {
+    return(gpfield_abstention(
+      "range_too_short",
+      sprintf(paste0("query spacing %.4g exceeds %.2g x the estimated range ",
+                     "%.4g; the field cannot be resolved this finely"),
+              spacing, spacing_tol, range_raw),
+      scope = "gp_predict",
+      diagnostics = list(spacing = spacing, range = range_raw,
+                         spacing_tol = spacing_tol)))
+  }
+  NULL
 }
 
 #' Check that an object is a gpfield_fit
