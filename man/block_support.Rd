@@ -14,17 +14,18 @@ to the fit's spatial coordinate axes, holding each block's lower bounds.}
 
 \item{ids}{Optional character block identifiers (default \code{"block1"}, ...).}
 
-\item{n_quad}{Integer number of Monte-Carlo quadrature points per block
-(default \code{200}).}
+\item{n_quad}{Integer target number of quadrature points per block
+(default \code{200}), realised as the nearest tensor grid of axis midpoints.}
 }
 \value{
 A \code{gpfield_block_support} classed list consumed by \code{\link[=gp_predict]{gp_predict()}}.
 }
 \description{
-Defines one or more rectangular blocks over which the latent field is to be
-integrated to a block average -- the paddock-scale change-of-support target.
-Each block is a row of lower / upper bounds per coordinate axis; the
-prediction integrates the GP posterior over each block by Monte-Carlo
+Defines one or more blocks over which the latent field is to be integrated to
+a block average -- the paddock-scale change-of-support target. Blocks are
+axis-aligned rectangles (a row of lower / upper bounds per coordinate axis);
+irregular or polygonal footprints are a planned extension, not supported here.
+The prediction integrates the GP posterior over each block by deterministic
 quadrature and propagates the full within-block covariance into the block
 average's predictive variance.
 }

@@ -19,10 +19,11 @@
 
 #' Describe a block (areal) support for change-of-support prediction
 #'
-#' Defines one or more rectangular blocks over which the latent field is to be
-#' integrated to a block average -- the paddock-scale change-of-support target.
-#' Each block is a row of lower / upper bounds per coordinate axis; the
-#' prediction integrates the GP posterior over each block by Monte-Carlo
+#' Defines one or more blocks over which the latent field is to be integrated to
+#' a block average -- the paddock-scale change-of-support target. Blocks are
+#' axis-aligned rectangles (a row of lower / upper bounds per coordinate axis);
+#' irregular or polygonal footprints are a planned extension, not supported here.
+#' The prediction integrates the GP posterior over each block by deterministic
 #' quadrature and propagates the full within-block covariance into the block
 #' average's predictive variance.
 #'
@@ -30,8 +31,8 @@
 #'   to the fit's spatial coordinate axes, holding each block's lower bounds.
 #' @param upper As `lower`, holding the upper bounds.
 #' @param ids Optional character block identifiers (default `"block1"`, ...).
-#' @param n_quad Integer number of Monte-Carlo quadrature points per block
-#'   (default `200`).
+#' @param n_quad Integer target number of quadrature points per block
+#'   (default `200`), realised as the nearest tensor grid of axis midpoints.
 #'
 #' @returns A `gpfield_block_support` classed list consumed by [gp_predict()].
 #'
@@ -161,12 +162,14 @@ print.gpfield_block_support <- function(x, ...) {
 #'   requires `blocks`.
 #' @param blocks A `gpfield_block_support` from [block_support()], required when
 #'   `support = "block"`.
-#' @param min_support_ranges Numeric: a block must have at least one training
-#'   observation within this many correlation ranges of its footprint, else the
-#'   verb abstains. Default `1`.
-#' @param spacing_tol Numeric: the point grid's spacing may be at most this
-#'   multiple of the estimated range before the verb abstains with
-#'   `"range_too_short"`. Default `1` (spacing may not exceed the range).
+#' @param min_support_ranges Numeric, block support only: a block must have at
+#'   least one training observation within this many correlation ranges of its
+#'   footprint, else the verb abstains. Default `1`. Ignored (with a warning) at
+#'   point support.
+#' @param spacing_tol Numeric, point support only: the point grid's spacing may
+#'   be at most this multiple of the estimated range before the verb abstains
+#'   with `"range_too_short"`. Default `1` (spacing may not exceed the range).
+#'   Ignored (with a warning) at block support.
 #' @param seed Retained for backward compatibility. Block quadrature is now
 #'   deterministic (a tensor grid, not Monte-Carlo draws), so a block prediction
 #'   is reproducible without a seed and never perturbs the caller's random
@@ -200,6 +203,16 @@ gp_predict <- function(fit, newdata = NULL, support = c("point", "block"),
                        spacing_tol = 1, seed = NULL) {
   support <- match.arg(support)
   .check_fit(fit)
+  # Some arguments apply to only one support; warn rather than silently ignore a
+  # value the caller took the trouble to set.
+  if (support == "point" && !missing(min_support_ranges)) {
+    warning("`min_support_ranges` applies to block support and is ignored ",
+            "for point prediction.", call. = FALSE)
+  }
+  if (support == "block" && !missing(spacing_tol)) {
+    warning("`spacing_tol` applies to point support and is ignored for block ",
+            "prediction.", call. = FALSE)
+  }
   kfun <- .kernel_fun(fit@spec@kernel, nu = fit@spec@nu)
 
   if (support == "point") {

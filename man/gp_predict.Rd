@@ -26,13 +26,15 @@ requires \code{blocks}.}
 \item{blocks}{A \code{gpfield_block_support} from \code{\link[=block_support]{block_support()}}, required when
 \code{support = "block"}.}
 
-\item{min_support_ranges}{Numeric: a block must have at least one training
-observation within this many correlation ranges of its footprint, else the
-verb abstains. Default \code{1}.}
+\item{min_support_ranges}{Numeric, block support only: a block must have at
+least one training observation within this many correlation ranges of its
+footprint, else the verb abstains. Default \code{1}. Ignored (with a warning) at
+point support.}
 
-\item{spacing_tol}{Numeric: the point grid's spacing may be at most this
-multiple of the estimated range before the verb abstains with
-\code{"range_too_short"}. Default \code{1} (spacing may not exceed the range).}
+\item{spacing_tol}{Numeric, point support only: the point grid's spacing may
+be at most this multiple of the estimated range before the verb abstains
+with \code{"range_too_short"}. Default \code{1} (spacing may not exceed the range).
+Ignored (with a warning) at block support.}
 
 \item{seed}{Retained for backward compatibility. Block quadrature is now
 deterministic (a tensor grid, not Monte-Carlo draws), so a block prediction

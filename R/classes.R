@@ -125,6 +125,32 @@ gpfield_prediction_class <- S7::new_class(
   )
 )
 
+# --- gpfield_smooth ----------------------------------------------------------
+
+#' A fitted-and-smoothed field
+#'
+#' The successful result of [gp_field_smooth()]: the fitted `gpfield_fit` and the
+#' point-support `gpfield_prediction` over the (possibly refined) plot grid,
+#' carried together as one typed object so the smoothing path returns the same
+#' kind of inspectable value as the rest of the package rather than a bare list.
+#' Access the parts with `@fit` and `@prediction`. An unsuccessful smoothing
+#' returns a [gpfield_abstention()] instead.
+#'
+#' @usage NULL
+#'
+#' @returns An S7 object of class `gpfield_smooth`.
+#'
+#' @seealso [gp_field_smooth()], [gp_field_plot()]
+#' @export
+gpfield_smooth_class <- S7::new_class(
+  "gpfield_smooth_class",
+  package = "gpfield",
+  properties = list(
+    fit        = gpfield_fit_class,
+    prediction = gpfield_prediction_class
+  )
+)
+
 # --- constructors and print methods ------------------------------------------
 
 #' Specify a gpfield Gaussian-process model
@@ -249,4 +275,19 @@ S7::method(print, gpfield_prediction_class) <- function(x, ...) {
   cat(sprintf("  sd range:   [%.4g, %.4g]\n",
               min(x@sd), max(x@sd)))
   invisible(x)
+}
+
+S7::method(print, gpfield_smooth_class) <- function(x, ...) {
+  cat("<gpfield_smooth>\n")
+  cat(sprintf("  fit:        %d training points\n", length(x@fit@y_raw)))
+  cat(sprintf("  prediction: %s support, %d locations\n",
+              x@prediction@support, length(x@prediction@mean)))
+  invisible(x)
+}
+
+# An idiomatic `predict()` method so a fitted GP drops into generic tooling; it
+# delegates to the documented verb [gp_predict()], which carries the arguments.
+# `predict` is imported from stats (see the package doc) so it can be named bare.
+S7::method(predict, gpfield_fit_class) <- function(object, ...) {
+  gp_predict(object, ...)
 }

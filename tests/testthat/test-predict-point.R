@@ -52,3 +52,24 @@ test_that("gp_predict errors when fit is not a gpfield_fit", {
   expect_error(gp_predict(list(), data.frame(x = 1, y = 1)),
                "must be a `gpfield_fit`")
 })
+
+test_that("the predict() S7 method delegates to gp_predict", {
+  fit <- .fitted_field()
+  q <- expand.grid(x = seq_len(5L), y = seq_len(5L))
+  via_method <- predict(fit, q)
+  via_verb <- gp_predict(fit, q)
+  expect_true(S7::S7_inherits(via_method, gpfield_prediction_class))
+  expect_equal(via_method@mean, via_verb@mean)
+  expect_equal(via_method@sd, via_verb@sd)
+})
+
+test_that("gp_predict warns on a mode-mismatched argument", {
+  fit <- .fitted_field()
+  q <- .make_field()[, c("x", "y")]
+  expect_warning(gp_predict(fit, q, min_support_ranges = 2),
+                 "min_support_ranges")
+  bl <- block_support(lower = rbind(c(1, 1)), upper = rbind(c(6, 6)))
+  expect_warning(
+    gp_predict(fit, support = "block", blocks = bl, spacing_tol = 2),
+    "spacing_tol")
+})

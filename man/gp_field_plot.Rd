@@ -7,8 +7,8 @@
 gp_field_plot(prediction, row = "row", col = "col")
 }
 \arguments{
-\item{prediction}{A point-support \code{gpfield_prediction}, or the list returned
-by \code{\link[=gp_field_smooth]{gp_field_smooth()}}.}
+\item{prediction}{A point-support \code{gpfield_prediction}, or the
+\code{gpfield_smooth} object returned by \code{\link[=gp_field_smooth]{gp_field_smooth()}}.}
 
 \item{row, col}{Character scalars naming the coordinate columns in the
 prediction locations (default \code{"row"} and \code{"col"}).}

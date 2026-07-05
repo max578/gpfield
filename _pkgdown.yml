@@ -53,6 +53,7 @@ reference:
   - gpfield_spec_class
   - gpfield_fit_class
   - gpfield_prediction_class
+  - gpfield_smooth_class
 
 - title: Package
   contents:

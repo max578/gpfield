@@ -1,14 +1,16 @@
 # test-field.R -- the row-column MET / field-smoothing convenience path.
 
-test_that("gp_field_smooth returns a fit and a prediction on a row-col layout", {
+test_that("gp_field_smooth returns a typed gpfield_smooth on a row-col layout", {
   f <- .make_field()
   names(f) <- c("row", "col", "yield")
   sm <- gp_field_smooth(f, response = "yield", seed = 1L)
   expect_false(is_gpfield_abstention(sm))
-  expect_true(S7::S7_inherits(sm$fit, gpfield_fit_class))
-  expect_true(S7::S7_inherits(sm$prediction, gpfield_prediction_class))
+  expect_true(S7::S7_inherits(sm, gpfield_smooth_class))
+  expect_true(S7::S7_inherits(sm@fit, gpfield_fit_class))
+  expect_true(S7::S7_inherits(sm@prediction, gpfield_prediction_class))
   # On the observed grid (refine = 1) one prediction per plot.
-  expect_equal(length(sm$prediction@mean), nrow(f))
+  expect_equal(length(sm@prediction@mean), nrow(f))
+  expect_output(print(sm), "<gpfield_smooth>")
 })
 
 test_that("gp_field_smooth refines the grid by the requested factor", {
@@ -17,7 +19,7 @@ test_that("gp_field_smooth refines the grid by the requested factor", {
   sm <- gp_field_smooth(f, response = "yield", refine = 2L, seed = 1L)
   expect_false(is_gpfield_abstention(sm))
   # A 10x10 grid refined x2 -> 19x19.
-  expect_equal(length(sm$prediction@mean), 19L * 19L)
+  expect_equal(length(sm@prediction@mean), 19L * 19L)
 })
 
 test_that("gp_field_smooth propagates an abstention from the fit", {

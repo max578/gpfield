@@ -36,9 +36,9 @@ abstention.}
 \item{seed}{Optional integer seed recorded with the fit.}
 }
 \value{
-A list with the \code{fit} (a \code{gpfield_fit}) and the \code{prediction} (a
-\code{gpfield_prediction}), or a \code{\link[=gpfield_abstention]{gpfield_abstention()}} when the fit or the
-prediction cannot be supported.
+A \code{gpfield_smooth} S7 object carrying the \verb{@fit} (a \code{gpfield_fit})
+and the \verb{@prediction} (a \code{gpfield_prediction}), or a \code{\link[=gpfield_abstention]{gpfield_abstention()}}
+when the fit or the prediction cannot be supported.
 }
 \description{
 One call from a multi-environment-trial (or any row-column field) data frame
@@ -55,7 +55,7 @@ field <- expand.grid(row = seq_len(10L), col = seq_len(10L))
 field$yield <- 3 + 0.2 * field$row - 0.1 * field$col +
   stats::rnorm(nrow(field), 0, 0.3)
 sm <- gp_field_smooth(field, response = "yield", seed = 1L)
-sm$prediction
+sm@prediction
 
 }
 \seealso{

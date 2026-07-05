@@ -75,6 +75,21 @@ against the federation contract. The public API is unchanged.
   against a snapshot of the reference. The `structure` inferential target is
   added to the accepted enum.
 
+## API
+
+* `gp_field_smooth()` now returns a typed `gpfield_smooth` object with `@fit` and
+  `@prediction` properties, rather than a bare list -- the smoothing path now
+  returns the same kind of inspectable value as the rest of the package. Access
+  the parts with `@fit` / `@prediction` (previously `$fit` / `$prediction`);
+  `gp_field_plot()` accepts the new object directly.
+* A `predict()` method is registered for a fitted GP, delegating to the
+  documented verb `gp_predict()`, so a fit drops into generic tooling.
+* `gp_predict()` now warns when an argument is set that does not apply to the
+  chosen support (`min_support_ranges` at point support, `spacing_tol` at block
+  support) rather than ignoring it silently.
+* `block_support()` documents that blocks are axis-aligned rectangles; irregular
+  or polygonal footprints are a planned extension.
+
 ## Testing
 
 * An independent-oracle test recomputes the GP posterior from scratch with

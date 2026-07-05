@@ -83,7 +83,7 @@ the result (the plot needs `ggplot2`).
 
 ```{r smooth, fig.alt = "Smoothed barley-yield surface over the row-column plot grid"}
 smoothed <- gp_field_smooth(field, response = "yield", refine = 2L, seed = 1L)
-smoothed$prediction
+smoothed@prediction
 
 if (requireNamespace("ggplot2", quietly = TRUE)) {
   gp_field_plot(smoothed)

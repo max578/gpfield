@@ -31,9 +31,9 @@
 #'   abstention.
 #' @param seed Optional integer seed recorded with the fit.
 #'
-#' @returns A list with the `fit` (a `gpfield_fit`) and the `prediction` (a
-#'   `gpfield_prediction`), or a [gpfield_abstention()] when the fit or the
-#'   prediction cannot be supported.
+#' @returns A `gpfield_smooth` S7 object carrying the `@fit` (a `gpfield_fit`)
+#'   and the `@prediction` (a `gpfield_prediction`), or a [gpfield_abstention()]
+#'   when the fit or the prediction cannot be supported.
 #'
 #' @seealso [gp_fit()], [gp_predict()], [gp_field_plot()]
 #'
@@ -43,7 +43,7 @@
 #' field$yield <- 3 + 0.2 * field$row - 0.1 * field$col +
 #'   stats::rnorm(nrow(field), 0, 0.3)
 #' sm <- gp_field_smooth(field, response = "yield", seed = 1L)
-#' sm$prediction
+#' sm@prediction
 #'
 #' @export
 gp_field_smooth <- function(data, response, row = "row", col = "col",
@@ -68,7 +68,7 @@ gp_field_smooth <- function(data, response, row = "row", col = "col",
   if (is_gpfield_abstention(pred)) {
     return(pred)
   }
-  list(fit = fit, prediction = pred)
+  gpfield_smooth_class(fit = fit, prediction = pred)
 }
 
 #' Draw a smoothed field surface (requires ggplot2)
@@ -78,8 +78,8 @@ gp_field_smooth <- function(data, response, row = "row", col = "col",
 #' colourblind-safe viridis option. Requires the optional `ggplot2` package and
 #' the two coordinate columns to be present in the prediction locations.
 #'
-#' @param prediction A point-support `gpfield_prediction`, or the list returned
-#'   by [gp_field_smooth()].
+#' @param prediction A point-support `gpfield_prediction`, or the
+#'   `gpfield_smooth` object returned by [gp_field_smooth()].
 #' @param row,col Character scalars naming the coordinate columns in the
 #'   prediction locations (default `"row"` and `"col"`).
 #'
@@ -101,14 +101,13 @@ gp_field_plot <- function(prediction, row = "row", col = "col") {
     stop("`gp_field_plot()` needs the `ggplot2` package; install it first.",
          call. = FALSE)
   }
-  if (is.list(prediction) && !S7::S7_inherits(prediction,
-                                              gpfield_prediction_class)) {
-    prediction <- prediction$prediction
+  if (S7::S7_inherits(prediction, gpfield_smooth_class)) {
+    prediction <- prediction@prediction
   }
   if (!S7::S7_inherits(prediction, gpfield_prediction_class) ||
       prediction@support != "point") {
-    stop("`prediction` must be a point-support `gpfield_prediction`.",
-         call. = FALSE)
+    stop("`prediction` must be a point-support `gpfield_prediction` or a ",
+         "`gpfield_smooth`.", call. = FALSE)
   }
   df <- as.data.frame(prediction@locations)
   df$.smoothed <- prediction@mean
