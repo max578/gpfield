@@ -94,6 +94,9 @@ print.gpfield_block_support <- function(x, ...) {
 #' @noRd
 #' @keywords internal
 .gp_posterior <- function(fit, xq_std, kfun) {
+  if (isTRUE(fit@hyper$backend == "lowrank")) {
+    return(.gp_posterior_lowrank(fit, xq_std, kfun, full = TRUE))
+  }
   sigma2 <- fit@hyper$sigma2
   ell <- fit@hyper$ell
   d_qx <- .pairwise_distance(xq_std, fit@coords_std)
@@ -123,6 +126,9 @@ print.gpfield_block_support <- function(x, ...) {
 #' @noRd
 #' @keywords internal
 .gp_posterior_diag <- function(fit, xq_std, kfun) {
+  if (isTRUE(fit@hyper$backend == "lowrank")) {
+    return(.gp_posterior_lowrank(fit, xq_std, kfun, full = FALSE))
+  }
   sigma2 <- fit@hyper$sigma2
   ell <- fit@hyper$ell
   d_qx <- .pairwise_distance(xq_std, fit@coords_std)

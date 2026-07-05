@@ -41,7 +41,9 @@ gpfield_spec_class <- S7::new_class(
                                     default = NA_character_),
     response     = S7::class_character,
     nugget       = S7::new_property(S7::class_numeric, default = 1e-6),
-    anisotropic  = S7::new_property(S7::class_logical, default = FALSE)
+    anisotropic  = S7::new_property(S7::class_logical, default = FALSE),
+    solver       = S7::new_property(S7::class_character, default = "exact"),
+    n_inducing   = S7::new_property(S7::class_numeric, default = 200)
   ),
   validator = function(self) {
     errs <- character(0)
@@ -53,6 +55,12 @@ gpfield_spec_class <- S7::new_class(
     }
     if (self@nugget <= 0) {
       errs <- c(errs, "`nugget` must be positive")
+    }
+    if (!self@solver %in% c("exact", "lowrank")) {
+      errs <- c(errs, "`solver` must be \"exact\" or \"lowrank\"")
+    }
+    if (self@n_inducing < 3) {
+      errs <- c(errs, "`n_inducing` must be at least 3")
     }
     if (length(errs) == 0L) NULL else paste(errs, collapse = "; ")
   }
@@ -90,6 +98,7 @@ gpfield_fit_class <- S7::new_class(
     chol         = S7::class_any,
     alpha        = S7::class_numeric,
     loglik       = S7::class_numeric,
+    lowrank      = S7::new_property(S7::class_any, default = NULL),
     seed         = S7::new_property(S7::class_integer, default = NA_integer_),
     emitter_version = S7::new_property(S7::class_character,
                                        default = NA_character_)
@@ -192,6 +201,15 @@ gpfield_smooth_class <- S7::new_class(
 #'   different directions (an east-west tillage gradient versus a north-south
 #'   slope, or space versus a time axis). Default `FALSE` (a single length-scale,
 #'   the original behaviour).
+#' @param solver Character: `"exact"` (default) fits the exact GP by a full
+#'   Cholesky factorisation, cubic in the number of observations. `"lowrank"`
+#'   fits a Deterministic Training Conditional (DTC) sparse GP on `n_inducing`
+#'   space-filling inducing points -- cost `O(n * n_inducing^2)` -- for fields too
+#'   large for the exact solver. The low-rank solver is isotropic (a single
+#'   length-scale) and falls back to the exact solver when the data have no more
+#'   rows than `n_inducing`.
+#' @param n_inducing Integer number of inducing points for `solver = "lowrank"`
+#'   (default `200`, minimum `3`); ignored for the exact solver.
 #'
 #' @returns A `gpfield_spec` S7 object.
 #'
@@ -205,6 +223,11 @@ gpfield_smooth_class <- S7::new_class(
 #' aniso <- gpfield_spec(c("x", "y"), "yield", anisotropic = TRUE)
 #' aniso
 #'
+#' # A large field: the low-rank sparse solver on 150 inducing points.
+#' big <- gpfield_spec(c("x", "y"), "yield", solver = "lowrank",
+#'                     n_inducing = 150L)
+#' big
+#'
 #' # A spatio-temporal specification with the squared-exponential kernel.
 #' st <- gpfield_spec(
 #'   coords = c("x", "y"), response = "ndvi", kernel = "se", time = "doy"
@@ -214,16 +237,19 @@ gpfield_smooth_class <- S7::new_class(
 #' @export
 gpfield_spec <- function(coords, response, kernel = "matern", nu = 1.5,
                          time = NA_character_, nugget = 1e-6,
-                         anisotropic = FALSE) {
+                         anisotropic = FALSE, solver = c("exact", "lowrank"),
+                         n_inducing = 200L) {
   .check_kernel(kernel)
   if (kernel == "matern") {
     .check_nu(nu)
   }
+  solver <- match.arg(solver)
   gpfield_spec_class(
     kernel = kernel, nu = as.numeric(nu),
     coords = as.character(coords), response = as.character(response),
     time = as.character(time), nugget = as.numeric(nugget),
-    anisotropic = isTRUE(anisotropic))
+    anisotropic = isTRUE(anisotropic), solver = solver,
+    n_inducing = as.numeric(n_inducing))
 }
 
 # S7 objects dispatch through S7's own method table, not S3 name-matching, so
@@ -244,6 +270,10 @@ S7::method(print, gpfield_spec_class) <- function(x, ...) {
     cat(sprintf("  time:     %s\n", x@time))
   }
   cat(sprintf("  response: %s\n", x@response))
+  if (x@solver == "lowrank") {
+    cat(sprintf("  solver:   low-rank (DTC, %d inducing points)\n",
+                as.integer(x@n_inducing)))
+  }
   invisible(x)
 }
 
@@ -252,6 +282,10 @@ S7::method(print, gpfield_fit_class) <- function(x, ...) {
   cat(sprintf("  kernel:      %s%s\n", x@spec@kernel,
               if (isTRUE(x@hyper$anisotropic)) " (anisotropic)" else ""))
   cat(sprintf("  n training:  %d\n", length(x@y_raw)))
+  if (isTRUE(x@hyper$backend == "lowrank")) {
+    cat(sprintf("  solver:      low-rank (DTC, %d inducing points)\n",
+                x@hyper$n_inducing))
+  }
   if (isTRUE(x@hyper$anisotropic)) {
     cat(sprintf("  range per axis (raw units):  %s\n",
                 paste(sprintf("%s = %.4g", names(x@hyper$range_axis),

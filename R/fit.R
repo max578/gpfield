@@ -351,13 +351,21 @@ gp_fit <- function(spec, data, seed = NULL) {
   ys <- (y_raw - y_mu) / y_sd
   kfun <- .kernel_fun(spec@kernel, nu = spec@nu)
   npar <- ncol(std$xs)
+  # The low-rank (DTC) solver activates only when the data are larger than the
+  # inducing set (otherwise the exact solver is both cheaper and identical); it
+  # is isotropic, so it takes precedence over the ARD path.
+  use_lowrank <- spec@solver == "lowrank" && length(y_raw) > spec@n_inducing
   # A spatio-temporal fit is anisotropic by necessity: a metre of space and a day
   # of time are not exchangeable, so time earns its own length-scale even when
   # `anisotropic` was left at its default. A purely spatial fit follows the flag.
-  use_ard <- (isTRUE(spec@anisotropic) || !is.na(spec@time)) && npar >= 2L
+  use_ard <- !use_lowrank && (isTRUE(spec@anisotropic) || !is.na(spec@time)) &&
+    npar >= 2L
   range_mult <- .range_factor(spec@kernel, nu = spec@nu)
 
-  if (use_ard) {
+  if (use_lowrank) {
+    ind <- .select_inducing(std$xs, as.integer(spec@n_inducing))
+    fit <- .gp_fit_lowrank(std$xs, ys, kfun, spec@nugget, ind)
+  } else if (use_ard) {
     fit <- .gp_fit_hyper_ard(std$xs, ys, kfun, spec@nugget)
   } else {
     d <- .pairwise_distance(std$xs, std$xs)
@@ -370,6 +378,7 @@ gp_fit <- function(spec, data, seed = NULL) {
       scope = "gp_fit"))
   }
 
+  lowrank_store <- NULL
   if (use_ard) {
     # Absorb the per-axis standardised length-scales into the per-axis spread, so
     # the stored coordinates carry the anisotropy and the kernel stays isotropic
@@ -389,16 +398,23 @@ gp_fit <- function(spec, data, seed = NULL) {
     hyper <- list(sigma2 = fit$sigma2, ell = 1, noise = fit$noise,
                   range_raw = range_mult * mean(effective_spread),
                   anisotropic = TRUE, range_axis = range_axis,
-                  ell_standardised = fit$ell)
+                  ell_standardised = fit$ell, backend = "exact")
   } else {
     # Translate the single standardised length-scale to a raw-units effective
     # (practical) correlation range -- the length-scale scaled to the kernel's
-    # decay-to-0.05 distance; it is the figure the support logic uses.
+    # decay-to-0.05 distance; it is the figure the support logic uses. The
+    # low-rank solver is isotropic, so it shares this branch and only differs in
+    # its cached factors and the `backend` tag the posterior verbs dispatch on.
     coords_std <- std$xs
     spread_store <- std$spread
     hyper <- list(sigma2 = fit$sigma2, ell = fit$ell, noise = fit$noise,
                   range_raw = range_mult * fit$ell * mean(std$spread),
-                  anisotropic = FALSE)
+                  anisotropic = FALSE,
+                  backend = if (use_lowrank) "lowrank" else "exact")
+    if (use_lowrank) {
+      lowrank_store <- fit$lowrank
+      hyper$n_inducing <- fit$lowrank$m
+    }
   }
 
   gpfield_fit_class(
@@ -406,6 +422,7 @@ gp_fit <- function(spec, data, seed = NULL) {
     centre = std$centre, spread = spread_store,
     y_raw = y_raw, y_mu = y_mu, y_sd = y_sd,
     hyper = hyper, chol = fit$chol, alpha = fit$alpha, loglik = fit$loglik,
+    lowrank = lowrank_store,
     seed = if (is.null(seed)) NA_integer_ else as.integer(seed),
     emitter_version = as.character(utils::packageVersion("gpfield")))
 }

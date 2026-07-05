@@ -165,12 +165,33 @@ The smoothed surface now composes directly with the orchestra's calibration,
 uncertainty-quantification, causal-inference and decision members, with no
 special-casing on either side.
 
-## A note on scale
+## Scaling to large fields
 
 The exact solver is cubic in the number of observations -- comfortable for the
-hundreds-to-low-thousands of plots a multi-environment trial carries. For larger
-fields a low-rank / Nystrom approximation is a planned extension; the exact
-solver is the version-0.1 backend.
+hundreds-to-low-thousands of plots a multi-environment trial carries. For a field
+too large for the exact solver, `solver = "lowrank"` fits a Deterministic
+Training Conditional sparse Gaussian process on a set of space-filling inducing
+points, at cost linear in the number of plots and quadratic in the (much smaller)
+inducing count. Every verb above -- point and block prediction, change of
+support, honest abstention, manifest emission -- is unchanged; only the backend
+differs.
+
+```{r lowrank}
+set.seed(1L)
+big <- expand.grid(x = seq(0, 25, by = 0.5), y = seq(0, 25, by = 0.5))
+big$yield <- sin(0.3 * big$x) + cos(0.25 * big$y) + rnorm(nrow(big), 0, 0.2)
+nrow(big)
+
+fit_lr <- gp_fit(
+  gpfield_spec(c("x", "y"), "yield", solver = "lowrank", n_inducing = 120L),
+  big, seed = 1L
+)
+fit_lr
+```
+
+When the inducing set covers the whole field the low-rank posterior is exactly
+the exact GP, so the choice is a scale-versus-cost dial rather than a change of
+model. The default backend stays exact.
 
 ## Reference
 

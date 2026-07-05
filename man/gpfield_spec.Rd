@@ -11,7 +11,9 @@ gpfield_spec(
   nu = 1.5,
   time = NA_character_,
   nugget = 1e-06,
-  anisotropic = FALSE
+  anisotropic = FALSE,
+  solver = c("exact", "lowrank"),
+  n_inducing = 200L
 )
 }
 \arguments{
@@ -46,6 +48,17 @@ range -- the right model when a field varies on different scales along
 different directions (an east-west tillage gradient versus a north-south
 slope, or space versus a time axis). Default \code{FALSE} (a single length-scale,
 the original behaviour).}
+
+\item{solver}{Character: \code{"exact"} (default) fits the exact GP by a full
+Cholesky factorisation, cubic in the number of observations. \code{"lowrank"}
+fits a Deterministic Training Conditional (DTC) sparse GP on \code{n_inducing}
+space-filling inducing points -- cost \code{O(n * n_inducing^2)} -- for fields too
+large for the exact solver. The low-rank solver is isotropic (a single
+length-scale) and falls back to the exact solver when the data have no more
+rows than \code{n_inducing}.}
+
+\item{n_inducing}{Integer number of inducing points for \code{solver = "lowrank"}
+(default \code{200}, minimum \code{3}); ignored for the exact solver.}
 }
 \value{
 A \code{gpfield_spec} S7 object.
@@ -71,6 +84,11 @@ spec
 # An anisotropic field: a separate length-scale per axis.
 aniso <- gpfield_spec(c("x", "y"), "yield", anisotropic = TRUE)
 aniso
+
+# A large field: the low-rank sparse solver on 150 inducing points.
+big <- gpfield_spec(c("x", "y"), "yield", solver = "lowrank",
+                    n_inducing = 150L)
+big
 
 # A spatio-temporal specification with the squared-exponential kernel.
 st <- gpfield_spec(

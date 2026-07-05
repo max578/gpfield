@@ -19,12 +19,20 @@
 - **What binds me (charter invariants):** *single-responsibility* (spatial GP +
   change-of-support only); *typed honest abstention* — `gpfield_abstention`
   (`range_too_short` / `support_gap` / `degenerate_fit` / `empty_query`) returned
-  in place of a fabricated surface; *leader-directed adoption*. Known boundary
-  (per the 2026-06-23 constellation verify): the kernel is **isotropic** —
-  directional gradients need an anisotropic kernel (a flagged R&D item).
+  in place of a fabricated surface; *leader-directed adoption*.
+- **Resolved boundaries (v0.3.0):** the two 2026-06-23 constellation-verify
+  boundaries are closed. (1) The isotropic-kernel limit is lifted —
+  `gpfield_spec(anisotropic = TRUE)` fits per-axis length-scales (ARD), and a
+  spatio-temporal fit is anisotropic by default so directional gradients are
+  modelled. (2) The cubic-scaling limit is lifted — `solver = "lowrank"` fits a
+  DTC sparse GP on inducing points at `O(n * m^2)`, ~30x faster on ~1700 plots
+  and reaching fields the exact solver cannot. Manifest emission is re-grounded
+  to contract `2.0.0-draft` (version-stable payload hash; verifies across R
+  versions). Open contract question for the leader node: nominal vs structural
+  class identity (see `ORCHESTRA_dev/integration/gpfield_contract_sync_2026-07-05.md`).
 - **Governance:** gpfield is a **Max-owned personal package** (MIT-track); the
-  AAGI-AUS canon does not apply. Built v0.1.0, local (no remote yet — Max's
-  visibility call).
+  AAGI-AUS canon does not apply. At **v0.3.0** on the private remote
+  `max578/gpfield` (Max's visibility call remains: still private).
 
 ## My siblings (the full roster — so I am informed about the others)
 

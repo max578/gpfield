@@ -1,8 +1,24 @@
 # gpfield 0.3.0
 
 A correctness, performance and methodology pass over the exact solver and the
-change-of-support machinery, plus a re-grounding of the orchestra manifest
-against the federation contract. The public API is unchanged.
+change-of-support machinery, an optional low-rank solver for large fields, and a
+re-grounding of the orchestra manifest against the federation contract.
+
+## New features
+
+* **Low-rank solver for large fields.** `gpfield_spec(solver = "lowrank")` fits a
+  Deterministic Training Conditional (DTC) sparse Gaussian process on
+  `n_inducing` space-filling inducing points, at cost `O(n * n_inducing^2)`
+  rather than the exact solver's `O(n^3)`. On a smooth field of ~1700 plots the
+  low-rank fit is roughly 30 times faster than the exact fit with matching
+  held-out accuracy, and it scales to fields the exact solver cannot reach. The
+  inducing points are selected deterministically by farthest-point sampling (no
+  RNG), so the fit is reproducible; when the inducing set is the whole training
+  set the DTC posterior is exactly the exact GP. Every downstream verb -- point
+  and block prediction, change of support, honest abstention, manifest emission
+  -- works unchanged under the low-rank fit. The default solver stays exact, and
+  the low-rank solver falls back to exact when the data have no more rows than
+  `n_inducing`.
 
 ## Bug fixes
 
