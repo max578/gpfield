@@ -14,5 +14,6 @@ bibentry(
     comment = c(ORCID = "0000-0001-9680-8474")
   ),
   year    = "2026",
-  note    = sprintf("R package version %s", meta$Version)
+  note    = sprintf("R package version %s", meta$Version),
+  url     = "https://github.com/max578/gpfield"
 )

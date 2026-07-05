@@ -25,6 +25,8 @@ Description: A self-contained, contract-emitting member of the agricultural
     decision tools. The package is released under the MIT licence and takes no
     heavy external Gaussian-process dependency: the exact solver is base R.
 License: MIT + file LICENSE
+URL: https://github.com/max578/gpfield
+BugReports: https://github.com/max578/gpfield/issues
 Depends:
     R (>= 4.1.0)
 Imports:
