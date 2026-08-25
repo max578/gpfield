@@ -36,6 +36,7 @@ Imports:
     utils
 Suggests:
     agridat,
+    callr,
     ggplot2,
     knitr,
     rmarkdown,

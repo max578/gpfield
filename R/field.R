@@ -14,9 +14,12 @@
 #' to a smoothed surface. Fits a gpfield Gaussian process over the row and column
 #' coordinates and predicts the latent trait surface back onto a plot grid -- the
 #' observed grid by default, or a finer grid through `refine`. The honest
-#' abstention of [gp_predict()] is inherited: a refinement finer than the
-#' estimated correlation range returns a [gpfield_abstention()] rather than an
-#' over-confident surface.
+#' abstention of [gp_predict()] is inherited: refining only inserts points
+#' strictly between the *observed* row-column locations, so if the observed
+#' grid's own spacing is already coarser than the estimated correlation range
+#' can resolve, [gp_field_smooth()] returns a [gpfield_abstention()] at every
+#' `refine` level rather than an over-confident surface -- refining a grid the
+#' range cannot support does not manufacture support.
 #'
 #' @param data A `data.frame` with the row, column and response columns.
 #' @param response Character scalar naming the trait column to smooth.
@@ -27,8 +30,10 @@
 #' @param nu Matern smoothness (default `1.5`); ignored for `"se"`.
 #' @param refine Positive integer grid-refinement factor. `1` (default) predicts
 #'   on the observed plot grid; `2` predicts on a grid twice as fine on each
-#'   axis, and so on. A refinement the field cannot support triggers an
-#'   abstention.
+#'   axis, and so on. Refining never itself escapes an abstention: the
+#'   observed grid's own spacing is checked against the estimated correlation
+#'   range before any refinement is applied, so an unsupported observed grid
+#'   stays unsupported at every `refine` level.
 #' @param seed Optional integer seed recorded with the fit.
 #'
 #' @returns A `gpfield_smooth` S7 object carrying the `@fit` (a `gpfield_fit`)
@@ -61,6 +66,20 @@ gp_field_smooth <- function(data, response, row = "row", col = "col",
   fit <- gp_fit(spec, data, seed = seed)
   if (is_gpfield_abstention(fit)) {
     return(fit)
+  }
+
+  # Refining only inserts points strictly between the *observed* row-column
+  # locations; it cannot manufacture support the observed grid does not have.
+  # Gate on the observed (refine = 1) grid's own spacing against the fit's
+  # correlation range before refining, so a base grid the range cannot
+  # resolve stays refused at every refine level rather than escaping the
+  # guard once the refined grid's own point-to-point spacing shrinks below
+  # the range.
+  coord_cols <- .coord_columns(spec)
+  base_xq <- as.matrix(data[, coord_cols, drop = FALSE])
+  base_guard <- .point_support_guard(base_xq, fit, spacing_tol = 1)
+  if (!is.null(base_guard)) {
+    return(base_guard)
   }
 
   grid <- .refine_grid(data[[row]], data[[col]], refine, row, col)

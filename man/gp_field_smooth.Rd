@@ -30,8 +30,10 @@ gp_field_smooth(
 
 \item{refine}{Positive integer grid-refinement factor. \code{1} (default) predicts
 on the observed plot grid; \code{2} predicts on a grid twice as fine on each
-axis, and so on. A refinement the field cannot support triggers an
-abstention.}
+axis, and so on. Refining never itself escapes an abstention: the
+observed grid's own spacing is checked against the estimated correlation
+range before any refinement is applied, so an unsupported observed grid
+stays unsupported at every \code{refine} level.}
 
 \item{seed}{Optional integer seed recorded with the fit.}
 }
@@ -45,9 +47,12 @@ One call from a multi-environment-trial (or any row-column field) data frame
 to a smoothed surface. Fits a gpfield Gaussian process over the row and column
 coordinates and predicts the latent trait surface back onto a plot grid -- the
 observed grid by default, or a finer grid through \code{refine}. The honest
-abstention of \code{\link[=gp_predict]{gp_predict()}} is inherited: a refinement finer than the
-estimated correlation range returns a \code{\link[=gpfield_abstention]{gpfield_abstention()}} rather than an
-over-confident surface.
+abstention of \code{\link[=gp_predict]{gp_predict()}} is inherited: refining only inserts points
+strictly between the \emph{observed} row-column locations, so if the observed
+grid's own spacing is already coarser than the estimated correlation range
+can resolve, \code{\link[=gp_field_smooth]{gp_field_smooth()}} returns a \code{\link[=gpfield_abstention]{gpfield_abstention()}} at every
+\code{refine} level rather than an over-confident surface -- refining a grid the
+range cannot support does not manufacture support.
 }
 \examples{
 set.seed(1L)

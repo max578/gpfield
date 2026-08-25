@@ -1,3 +1,54 @@
+# gpfield (development version)
+
+## Bug fixes
+
+* `gp_field_smooth()`'s `refine` argument could escape its own documented
+  abstention: a large enough `refine` shrank the *refined* grid's own
+  point-to-point spacing below the estimated correlation range and so passed
+  the support guard, even though the *observed* grid the refinement was built
+  from was never any better supported. The observed grid's spacing is now
+  checked against the range before any refinement is applied, so a base grid
+  the range cannot resolve stays refused at every `refine` level.
+* `print.gpfield_abstention()` and `print.gpfield_block_support()` are now
+  registered explicitly via `registerS3method()` in `.onLoad()`. Under a real
+  installed `library(gpfield)` load the two methods were declared in
+  `NAMESPACE` but never reached `base::.__S3MethodsTable__.`, so the typed
+  refusal objects printed as a raw list with `attr(,"class")` exposed instead
+  of dispatching to their own print method.
+* The block-average predictive variance no longer adds an observation-noise
+  term. The block target is the integral of the *latent* field over the block
+  footprint, which carries no observation noise; treating the quadrature
+  nodes as `n_quad` independent noisy measurements added a term that shrank
+  with `n_quad` without vanishing, so the reported block standard deviation
+  never converged as the quadrature was refined.
+
+## Other
+
+* Added a GitHub Actions R-CMD-check workflow (ubuntu/macOS/windows, several
+  R versions) so the public CI oracle the rest of the orchestra relies on now
+  also covers gpfield.
+
+## Documentation
+
+* Corrected the vignette's identification of the worked dataset:
+  `agridat::besag.met` is a multi-environment trial of 64 **corn** hybrids
+  across six North Carolina counties, not barley -- grounded against the
+  `agridat` documentation and repeated in two places (running prose and a
+  figure's alt text).
+* Added a caption and an interpreting paragraph to the vignette's one figure
+  (the smoothed-surface plot), which previously carried alt text only and no
+  discussion of what the surface shows.
+* Added the governing equations for the block mean and variance (the
+  quadrature-weighted posterior mean and the full within-block quadratic
+  form) and for the Deterministic Training Conditional low-rank
+  approximation, with citations (Cressie 1993; Gotway and Young 2002;
+  Quinonero-Candela and Rasmussen 2005), to a vignette that previously
+  described both only in prose with no equations and no method citations.
+* Fixed the vignette's naive-independence standard-deviation comparison,
+  which divided by the *requested* `n_quad` rather than the tensor-midpoint
+  quadrature rule's *realised* point count (`round(sqrt(n_quad))^2`), a
+  discrepancy of 200 versus 196 at the vignette's default settings.
+
 # gpfield 0.3.0
 
 A correctness, performance and methodology pass over the exact solver and the
