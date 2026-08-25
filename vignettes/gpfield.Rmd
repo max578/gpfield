@@ -71,9 +71,12 @@ fit
 ```
 
 The fit reports an estimated correlation `range` in raw plot units. That range is
-the quantity the rest of the package reasons about: a prediction finer than the
-range is unsupported, and the fit makes that explicit instead of leaving it
-implicit.
+the quantity the rest of the package reasons about: a prediction spaced more
+coarsely than the range asks the GP to interpolate between effectively
+independent observations and is unsupported, and the fit makes that explicit
+instead of leaving it implicit. Refining a prediction grid (see below) makes it
+*finer*, not coarser, so refining never by itself triggers this abstention --
+only an observed grid coarser than the range does, at every refinement.
 
 ## Smoothing the surface
 
