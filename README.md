@@ -76,31 +76,13 @@ gp_predict(fit, support = "block", blocks = blocks, seed = 1L)
 
 # Ask for a resolution the field cannot support: gpfield abstains.
 gp_predict(fit, data.frame(row = c(1, 60), col = c(1, 60)))
-#> $reason
-#> [1] "range_too_short"
-#> 
-#> $detail
-#> [1] "query spacing 83.44 exceeds 1 x the estimated range 34.31; the field cannot be resolved this finely"
-#> 
-#> $scope
-#> [1] "gp_predict"
-#> 
-#> $diagnostics
-#> $diagnostics$spacing
-#> [1] 83.4386
-#> 
-#> $diagnostics$range
-#> [1] 34.31482
-#> 
-#> $diagnostics$spacing_tol
-#> [1] 1
-#> 
-#> 
-#> $abstained
-#> [1] TRUE
-#> 
-#> attr(,"class")
-#> [1] "gpfield_abstention"
+#> <gpfield_abstention>
+#>   scope:  gp_predict
+#>   reason: range_too_short
+#>   detail: query spacing 83.44 exceeds 1 x the estimated range 34.31; the field cannot be resolved this finely
+#>     spacing = 83.44
+#>     range = 34.31
+#>     spacing_tol = 1
 ```
 
 ## Licence
