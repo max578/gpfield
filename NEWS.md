@@ -28,6 +28,27 @@
   R versions) so the public CI oracle the rest of the orchestra relies on now
   also covers gpfield.
 
+## Documentation
+
+* Corrected the vignette's identification of the worked dataset:
+  `agridat::besag.met` is a multi-environment trial of 64 **corn** hybrids
+  across six North Carolina counties, not barley -- grounded against the
+  `agridat` documentation and repeated in two places (running prose and a
+  figure's alt text).
+* Added a caption and an interpreting paragraph to the vignette's one figure
+  (the smoothed-surface plot), which previously carried alt text only and no
+  discussion of what the surface shows.
+* Added the governing equations for the block mean and variance (the
+  quadrature-weighted posterior mean and the full within-block quadratic
+  form) and for the Deterministic Training Conditional low-rank
+  approximation, with citations (Cressie 1993; Gotway and Young 2002;
+  Quinonero-Candela and Rasmussen 2005), to a vignette that previously
+  described both only in prose with no equations and no method citations.
+* Fixed the vignette's naive-independence standard-deviation comparison,
+  which divided by the *requested* `n_quad` rather than the tensor-midpoint
+  quadrature rule's *realised* point count (`round(sqrt(n_quad))^2`), a
+  discrepancy of 200 versus 196 at the vignette's default settings.
+
 # gpfield 0.3.0
 
 A correctness, performance and methodology pass over the exact solver and the

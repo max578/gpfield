@@ -34,17 +34,18 @@ three questions a noisy plot grid alone cannot:
    honest answer -- in which case `gpfield` abstains rather than fabricate a
    confident surface.
 
-We use a real, public multi-environment trial -- the *Besag MET* barley-yield
+We use a real, public multi-environment trial -- the *Besag MET* corn-yield
 trial distributed in the `agridat` package -- so every figure below comes from
-data you can load yourself. The dataset is documented in `agridat` and originates
+data you can load yourself. The trial is documented in `agridat` and originates
 with Besag and Higdon (1999).
 
 ## A real row-column trial
 
 The trial is laid out as a row-by-column grid of plots within each of six
-environments (`county`). We take one environment and treat its plot grid as the
-spatial field. Six plots carry a missing yield; `gpfield` drops incomplete rows
-before fitting.
+environments (`county`), each an 18-by-11 lattice of 64 corn hybrids. We take
+one environment and treat its plot grid as the spatial field. A handful of
+plots carry a missing yield -- `gpfield` drops incomplete rows before fitting,
+and the count below confirms how many.
 
 ```{r data}
 if (!requireNamespace("agridat", quietly = TRUE)) {
@@ -84,7 +85,7 @@ only an observed grid coarser than the range does, at every refinement.
 surface. Here we refine the prediction grid to twice the plot resolution and draw
 the result (the plot needs `ggplot2`).
 
-```{r smooth, fig.alt = "Smoothed barley-yield surface over the row-column plot grid"}
+```{r smooth, fig.alt = "Smoothed corn-yield surface over the row-column plot grid", fig.cap = "Posterior mean corn-yield surface for county C1, smoothed onto a grid twice as fine as the plot layout (refine = 2). Warmer cells are higher predicted yield."}
 smoothed <- gp_field_smooth(field, response = "yield", refine = 2L, seed = 1L)
 smoothed@prediction
 
@@ -93,14 +94,39 @@ if (requireNamespace("ggplot2", quietly = TRUE)) {
 }
 ```
 
+The surface rises toward the high-row, high-column corner of the lattice --
+both axes carry a positive trend in the raw plots (`cor(row, yield)` $\approx
+0.50$, `cor(col, yield)` $\approx 0.20$) -- rather than showing the noisy
+plot-to-plot scatter of the raw data; that smoothing is the Matern range doing
+its job of separating spatial signal from plot-level noise. Refining the grid
+to twice the plot resolution does not invent new information, only a finer
+canvas on which the same fitted surface is drawn, which is why the abstention
+rule above binds on the *observed* grid's spacing, not the refined one.
+
 ## Change of support: from plots to blocks
 
-The defining capability is predicting at a *different support*. A point process
-(the plots) can be aggregated to an areal one (paddock-scale blocks). The block
-average is the integral of the latent field over the block, and -- crucially --
-its predictive variance is the full quadratic form over the within-block
-covariance, so spatial correlation within the block is carried into the
-block-average uncertainty.
+The defining capability is predicting at a *different support*: reconciling
+observations and predictions made at different spatial scales, the general
+change-of-support problem set out by Cressie (1993) and surveyed by Gotway and
+Young (2002). A point process (the plots) can be aggregated to an areal one
+(paddock-scale blocks). `gpfield` approximates the block average by a
+tensor-midpoint quadrature rule over $n_q$ nodes inside the block footprint,
+with equal weights $w_j = 1/n_q$. Writing $K_{*n}$ for the covariance between
+the $n_q$ quadrature nodes and the $n$ training points, $K_n$ for the training
+covariance, and $K_{**}$ for the quadrature nodes' own covariance, the block
+mean and variance are
+
+$$
+\hat{y}_B = \sum_{j=1}^{n_q} w_j \, \big[K_{*n} K_n^{-1} y\big]_j, \qquad
+\mathrm{Var}(y_B) = w^\top \big(K_{**} - K_{*n} K_n^{-1} K_{n*}\big) w.
+$$
+
+Both are the same posterior mean and covariance a point prediction would use,
+evaluated at the quadrature nodes and then averaged with the quadrature
+weights -- so the block variance carries the full within-block posterior
+covariance, not just the marginal point-wise variances. That off-diagonal term
+is what makes the block-average uncertainty larger than a naive average of
+independent point predictions.
 
 ```{r blocks}
 blocks <- block_support(
@@ -123,7 +149,11 @@ uncertainty for a paddock-scale claim.
 
 ```{r cos-compare}
 centre <- gp_predict(fit, data.frame(row = 5, col = 6))
-naive_sd <- centre@sd / sqrt(blocks$n_quad)
+# The tensor-midpoint rule realises per_axis^2 nodes, per_axis = round(sqrt(n_quad)),
+# not the requested n_quad exactly -- divide by the realised count, not the request.
+per_axis <- max(2L, round(sqrt(blocks$n_quad)))
+n_realised <- per_axis^2L
+naive_sd <- centre@sd / sqrt(n_realised)
 c(change_of_support_sd = round(block_pred@sd[[1L]], 3),
   naive_independence_sd = round(naive_sd, 4))
 ```
@@ -164,20 +194,31 @@ manifest
 verify_manifest(manifest)$ok
 ```
 
-The smoothed surface now composes directly with the orchestra's calibration,
-uncertainty-quantification, causal-inference and decision members, with no
-special-casing on either side.
+The smoothed surface is now expressed in the orchestra's shared manifest
+contract, the format its calibration, uncertainty-quantification,
+causal-inference and decision members are built to consume.
 
 ## Scaling to large fields
 
 The exact solver is cubic in the number of observations -- comfortable for the
 hundreds-to-low-thousands of plots a multi-environment trial carries. For a field
 too large for the exact solver, `solver = "lowrank"` fits a Deterministic
-Training Conditional sparse Gaussian process on a set of space-filling inducing
-points, at cost linear in the number of plots and quadratic in the (much smaller)
-inducing count. Every verb above -- point and block prediction, change of
-support, honest abstention, manifest emission -- is unchanged; only the backend
-differs.
+Training Conditional (DTC) sparse Gaussian process (Quinonero-Candela and
+Rasmussen 2005) on a set of $m$ space-filling inducing points, at cost linear in
+the number of plots $n$ and quadratic in the (much smaller) inducing count.
+Writing $K_{nm}$ for the covariance between training points and inducing
+points and $K_{mm}$ for the inducing points' own covariance, DTC replaces the
+exact $n \times n$ training covariance $K_n$ by the rank-$m$ approximation
+
+$$
+K_n \approx K_{nm} K_{mm}^{-1} K_{mn},
+$$
+
+so every quantity that would otherwise need an $n \times n$ Cholesky
+factorisation instead needs only an $m \times m$ one, at cost
+$O(n m^2)$ rather than $O(n^3)$. Every verb above -- point and block
+prediction, change of support, honest abstention, manifest emission -- is
+unchanged; only the backend differs.
 
 ```{r lowrank}
 set.seed(1L)
@@ -196,8 +237,17 @@ When the inducing set covers the whole field the low-rank posterior is exactly
 the exact GP, so the choice is a scale-versus-cost dial rather than a change of
 model. The default backend stays exact.
 
-## Reference
+## References
 
 Besag, J. and Higdon, D. (1999). Bayesian analysis of agricultural field
 experiments. *Journal of the Royal Statistical Society, Series B*, 61(4),
-691--746. Dataset distributed in the `agridat` package.
+691--746. Trial distributed in the `agridat` package.
+
+Cressie, N. (1993). *Statistics for Spatial Data*, revised edition. Wiley.
+
+Gotway, C. A. and Young, L. J. (2002). Combining incompatible spatial data.
+*Journal of the American Statistical Association*, 97(458), 632--648.
+
+Quinonero-Candela, J. and Rasmussen, C. E. (2005). A unifying view of sparse
+approximate Gaussian process regression. *Journal of Machine Learning
+Research*, 6, 1939--1959.
