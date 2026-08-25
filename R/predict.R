@@ -278,8 +278,9 @@ gp_predict <- function(fit, newdata = NULL, support = c("point", "block"),
 #' For each block, draws `n_quad` Monte-Carlo quadrature points uniformly over
 #' the block footprint, takes the GP posterior mean and FULL covariance at those
 #' points, and forms the block average as the mean of the posterior means and its
-#' variance as the double-sum quadratic form over the full covariance (plus the
-#' averaged observation noise). Using the full covariance is what makes this a
+#' variance as the double-sum quadratic form over the full covariance -- the
+#' *latent* field's integral, so no observation-noise term is added. Using the
+#' full covariance is what makes this a
 #' change of support rather than a cell-wise average: positive within-block
 #' correlation keeps the block-average variance well above `1/n_quad` of a point
 #' variance.
@@ -345,10 +346,15 @@ gp_predict <- function(fit, newdata = NULL, support = c("point", "block"),
     nq <- nrow(quad)
     w <- rep(1 / nq, nq)
     block_mean_s <- sum(w * post$mean)
-    # Full quadratic form propagates within-block correlation; noise contributes
-    # only its averaged share (independent across quadrature points).
-    block_var_s <- drop(crossprod(w, post$cov %*% w)) +
-      fit@hyper$noise / nq
+    # The block target is the integral of the *latent* field over the block
+    # footprint (see the roxygen above and the vignette) -- a latent quantity,
+    # which carries no observation noise. Adding an observation-noise term
+    # here would treat the quadrature nodes as if they were `nq` independent
+    # noisy measurements rather than integration points, and the added term
+    # would shrink with `nq` without ever vanishing, so the reported sd would
+    # never converge as the quadrature is refined. Only the full quadratic
+    # form over the within-block posterior covariance belongs here.
+    block_var_s <- drop(crossprod(w, post$cov %*% w))
     means[b] <- block_mean_s * fit@y_sd + fit@y_mu
     sds[b] <- sqrt(pmax(block_var_s, 0)) * fit@y_sd
   }
