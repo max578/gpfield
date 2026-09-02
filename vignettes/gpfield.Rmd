@@ -1,168 +1,277 @@
 ---
-title: "Change-of-support field smoothing with gpfield"
+title: "From point-sampled plots to a paddock block mean"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{Change-of-support field smoothing with gpfield}
+  %\VignetteIndexEntry{From point-sampled plots to a paddock block mean}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
+
+<!-- Render time: ~5 s under rmarkdown::render() with agridat and ggplot2
+     installed; macOS arm64, R 4.5.2, one core. -->
 
 ```{r setup, include = FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
-  fig.width = 6,
-  fig.height = 4.5
+  fig.width = 7,
+  fig.height = 4.5,
+  dpi = 150
 )
-set.seed(1L)
 ```
 
-```{r libs}
+```{r library}
 library(gpfield)
 ```
 
-## What this vignette shows
+## Why
 
-`gpfield` fits a spatial Gaussian process to a field or trial layout and answers
-three questions a noisy plot grid alone cannot:
+A trialist who has just walked an 18-by-11 corn multi-environment trial, plot
+by plot, does not actually want any one plot's yield. The management question
+sits one level up: *if all I have are point samples from these plots, what is
+the average yield -- and how uncertain is that average -- over the whole
+paddock-scale block I am about to manage as one unit, and can a grid this
+coarse even answer that, or should it say so and stop?* That is a
+change-of-support problem: reconciling an observation made at one spatial
+support (the plot) with a prediction wanted at another (the block), and
+propagating the plots' spatial correlation into the block's uncertainty
+rather than averaging it away. This vignette answers it twice over -- once
+where the data support an answer, and once where `gpfield` refuses to give
+one -- on a real, public multi-environment trial, so every number below is
+reproducible from data anyone can load.
 
-1. what is the smoothed trait surface, with calibrated uncertainty;
-2. what is the trait averaged over a paddock-scale block -- a *change of support*
-   from the observed point process to an areal one, with the predictive variance
-   propagated through the support map rather than averaged away;
-3. when is the field simply too coarse, or a block too far from any data, for an
-   honest answer -- in which case `gpfield` abstains rather than fabricate a
-   confident surface.
+## What
 
-We use a real, public multi-environment trial -- the *Besag MET* corn-yield
-trial distributed in the `agridat` package -- so every figure below comes from
-data you can load yourself. The trial is documented in `agridat` and originates
-with Besag and Higdon (1999).
+Five verbs carry the whole of this vignette. `gpfield_spec()` declares the
+model: which covariance kernel, which coordinate columns, which response.
+`gp_fit()` estimates its hyperparameters by marginal-likelihood optimisation
+and returns a `gpfield_fit` whose estimated correlation range is made
+explicit, because that range is what every guard below reasons about.
+`block_support()` describes one or more paddock-scale blocks as
+axis-aligned rectangles, and `gp_predict(..., support = "block")` is the
+change-of-support verb itself: the posterior mean and the full within-block
+predictive covariance, integrated by quadrature and reduced to a block
+average and its standard deviation. `gp_field_smooth()` is the one-call
+path from a row-column trial layout to a smoothed surface, and
+`gp_field_plot()` draws it. `as_orchestra_manifest()` and
+`verify_manifest()` express a prediction in, and check, the orchestra's
+shared manifest contract.
 
-## A real row-column trial
+## Do
 
-The trial is laid out as a row-by-column grid of plots within each of six
-environments (`county`), each an 18-by-11 lattice of 64 corn hybrids. We take
-one environment and treat its plot grid as the spatial field. A handful of
-plots carry a missing yield -- `gpfield` drops incomplete rows before fitting,
-and the count below confirms how many.
+### Engines available on this build
 
-```{r data}
-if (!requireNamespace("agridat", quietly = TRUE)) {
-  knitr::knit_exit()
-}
-met <- agridat::besag.met
-field <- met[met$county == "C1", c("row", "col", "yield")]
-str(field)
-sum(is.na(field$yield))
+Every chunk below that touches real data needs `agridat`; the figure needs
+`ggplot2`. Both are checked once, and a guarded chunk explains what is
+skipped when either is absent, so the vignette still renders -- with less
+to show -- on a build that carries neither.
+
+```{r engines}
+has_agridat <- requireNamespace("agridat", quietly = TRUE)
+has_ggplot2 <- requireNamespace("ggplot2", quietly = TRUE)
 ```
 
-## Fitting the Gaussian process
+```{r engines-skip, eval = !has_agridat, echo = FALSE, results = "asis"}
+cat("agridat is not installed on this build, so the corn-trial sections",
+    "below are skipped; the low-rank section at the end runs on a",
+    "synthetic field and is unaffected.\n")
+```
 
-A model is declared with `gpfield_spec()` -- which covariance kernel, which
-coordinate columns, which response -- and fitted with `gp_fit()`. The default is
-a `Matern` covariance at smoothness `1.5`, the usual choice for field data: it is
-once-differentiable rather than the squared-exponential's infinite smoothness,
-which avoids over-smoothing real agronomic gradients.
+### A real row-column trial
 
-```{r fit}
+We use the corn-hybrid Besag MET (multi-environment trial), distributed in
+the `agridat` package and originating with Besag and Higdon (1999): 64 corn
+hybrids across six counties in North Carolina, each county laid out as an
+18-by-11 lattice of plots. One county (`C1`) is treated as the spatial
+field.
+
+```{r data, eval = has_agridat, echo = has_agridat}
+met <- agridat::besag.met
+field <- met[met$county == "C1", c("row", "col", "yield")]
+n_missing <- sum(is.na(field$yield))
+str(field)
+```
+
+```{r data-kable, echo = FALSE, eval = has_agridat}
+facts <- data.frame(
+  fact = c("plots (rows of the field table)", "row indices",
+           "column indices", "plots with missing yield",
+           "correlation, row with yield", "correlation, column with yield"),
+  value = c(
+    as.character(nrow(field)),
+    paste0(min(field$row), " to ", max(field$row)),
+    paste0(min(field$col), " to ", max(field$col)),
+    as.character(n_missing),
+    sprintf("%.2f", cor(field$row, field$yield, use = "complete.obs")),
+    sprintf("%.2f", cor(field$col, field$yield, use = "complete.obs"))
+  ),
+  stringsAsFactors = FALSE
+)
+knitr::kable(
+  facts, col.names = c("Fact", "Value"),
+  caption = "County C1 of the Besag MET corn trial."
+)
+```
+
+`gpfield` drops the incomplete rows before fitting; the count above is what
+it drops, not a hand count.
+
+### Fitting the Gaussian process
+
+A model is declared with `gpfield_spec()` and fitted with `gp_fit()`. The
+default is a Matern covariance at smoothness 1.5, the usual choice for
+field data: once-differentiable rather than the squared-exponential's
+infinite smoothness, which avoids over-smoothing real agronomic gradients.
+
+```{r fit, eval = has_agridat, echo = has_agridat}
 spec <- gpfield_spec(coords = c("row", "col"), response = "yield")
 fit <- gp_fit(spec, field, seed = 1L)
 fit
 ```
 
-The fit reports an estimated correlation `range` in raw plot units. That range is
-the quantity the rest of the package reasons about: a prediction spaced more
-coarsely than the range asks the GP to interpolate between effectively
-independent observations and is unsupported, and the fit makes that explicit
-instead of leaving it implicit. Refining a prediction grid (see below) makes it
-*finer*, not coarser, so refining never by itself triggers this abstention --
-only an observed grid coarser than the range does, at every refinement.
+The fit reports an estimated correlation range in raw plot units -- the
+quantity the rest of the package reasons about. A prediction spaced more
+coarsely than this range asks the Gaussian process to interpolate between
+effectively independent observations, and every abstention guard below is
+stated in units of it.
 
-## Smoothing the surface
+### Two paddock blocks over the trial
 
-`gp_field_smooth()` is the one-call path from a row-column layout to a smoothed
-surface. Here we refine the prediction grid to twice the plot resolution and draw
-the result (the plot needs `ggplot2`).
+`block_support()` describes each management block as axis-aligned lower and
+upper bounds on the same row/column coordinates the fit was built from. We
+split the field lengthways into a south and a north half.
 
-```{r smooth, fig.alt = "Smoothed corn-yield surface over the row-column plot grid", fig.cap = "Posterior mean corn-yield surface for county C1, smoothed onto a grid twice as fine as the plot layout (refine = 2). Warmer cells are higher predicted yield."}
-smoothed <- gp_field_smooth(field, response = "yield", refine = 2L, seed = 1L)
-smoothed@prediction
-
-if (requireNamespace("ggplot2", quietly = TRUE)) {
-  gp_field_plot(smoothed)
-}
+```{r blocks, eval = has_agridat, echo = has_agridat}
+blocks <- block_support(
+  lower = rbind(c(1, 1), c(10, 1)),
+  upper = rbind(c(9, 11), c(18, 11)),
+  ids = c("south", "north")
+)
+blocks
 ```
 
-The surface rises toward the high-row, high-column corner of the lattice --
-both axes carry a positive trend in the raw plots (`cor(row, yield)` $\approx
-0.50$, `cor(col, yield)` $\approx 0.20$) -- rather than showing the noisy
-plot-to-plot scatter of the raw data; that smoothing is the Matern range doing
-its job of separating spatial signal from plot-level noise. Refining the grid
-to twice the plot resolution does not invent new information, only a finer
-canvas on which the same fitted surface is drawn, which is why the abstention
-rule above binds on the *observed* grid's spacing, not the refined one.
+### The smoothed surface, with the block footprints marked
 
-## Change of support: from plots to blocks
+`gp_field_smooth()` fits and predicts back onto the plot grid in one call;
+here we refine the prediction grid to twice the plot resolution.
+`gp_field_plot()` draws the smoothed surface, and the two block outlines
+from above are drawn over it -- a figure a table of block means cannot
+give, because it shows where each block's average sits in the field, not
+just what the average is.
 
-The defining capability is predicting at a *different support*: reconciling
-observations and predictions made at different spatial scales, the general
-change-of-support problem set out by Cressie (1993) and surveyed by Gotway and
-Young (2002). A point process (the plots) can be aggregated to an areal one
-(paddock-scale blocks). `gpfield` approximates the block average by a
-tensor-midpoint quadrature rule over $n_q$ nodes inside the block footprint,
-with equal weights $w_j = 1/n_q$. Writing $K_{*n}$ for the covariance between
-the $n_q$ quadrature nodes and the $n$ training points, $K_n$ for the training
-covariance, and $K_{**}$ for the quadrature nodes' own covariance, the block
-mean and variance are
+```{r smooth, eval = has_agridat, echo = has_agridat}
+smoothed <- gp_field_smooth(field, response = "yield", refine = 2L, seed = 1L)
+smoothed@prediction
+```
+
+```{r fig-surface, eval = has_agridat && has_ggplot2, echo = has_agridat && has_ggplot2, fig.cap = "Posterior mean corn yield over county C1 of the Besag MET, smoothed onto a grid twice as fine as the plot layout (refine = 2), with the south and north paddock blocks used below outlined in white. Warmer cells are higher predicted yield; agridat does not document a physical unit for this trial's yield column, so the colour scale carries Besag and Higdon's original, unlabelled scale."}
+block_df <- data.frame(
+  block = blocks$ids,
+  xmin = blocks$lower[, 1L], xmax = blocks$upper[, 1L],
+  ymin = blocks$lower[, 2L], ymax = blocks$upper[, 2L]
+)
+gp_field_plot(smoothed) +
+  ggplot2::geom_rect(
+    data = block_df,
+    ggplot2::aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+    inherit.aes = FALSE, colour = "white", fill = NA, linewidth = 0.9
+  ) +
+  ggplot2::labs(x = "plot row index (of 18)",
+               y = "plot column index (of 11)", fill = "smoothed yield")
+```
+
+```{r fig-surface-skip, eval = !(has_agridat && has_ggplot2), echo = FALSE, results = "asis"}
+cat("The smoothed-surface figure needs both agridat and ggplot2; it is",
+    "skipped when either is absent.\n")
+```
+
+The surface rises toward the high-row end of the lattice -- both axes
+carry a positive trend in the raw plots, and the county-C1 facts table
+above gives the correlation of each -- rather than showing the noisy
+plot-to-plot scatter of the raw data; that smoothing is the Matern range
+doing its job of separating spatial signal from plot-level noise.
+
+### Block-average predictions: mean and standard deviation
+
+The change-of-support problem itself was set out in general by Cressie
+(1993) and surveyed by Gotway and Young (2002): a point process (the
+plots) aggregated to an areal one (the blocks). `gpfield` approximates
+each block average by tensor-midpoint quadrature over $n_q$ nodes inside
+the block footprint, with equal weights $w_j = 1 / n_q$. Writing $K_{*n}$
+for the covariance between the $n_q$ quadrature nodes and the $n$ training
+points, $K_n$ for the training covariance, and $K_{**}$ for the quadrature
+nodes' own covariance, the block mean and variance are
 
 $$
 \hat{y}_B = \sum_{j=1}^{n_q} w_j \, \big[K_{*n} K_n^{-1} y\big]_j, \qquad
 \mathrm{Var}(y_B) = w^\top \big(K_{**} - K_{*n} K_n^{-1} K_{n*}\big) w.
 $$
 
-Both are the same posterior mean and covariance a point prediction would use,
-evaluated at the quadrature nodes and then averaged with the quadrature
-weights -- so the block variance carries the full within-block posterior
-covariance, not just the marginal point-wise variances. That off-diagonal term
-is what makes the block-average uncertainty larger than a naive average of
-independent point predictions.
+Both are the same posterior mean and covariance a point prediction would
+use, evaluated at the quadrature nodes and then averaged with the
+quadrature weights, so the block variance carries the full within-block
+posterior covariance rather than the marginal point-wise variances alone.
 
-```{r blocks}
-blocks <- block_support(
-  lower = rbind(c(1, 1), c(10, 1)),
-  upper = rbind(c(9, 11), c(18, 11)),
-  ids = c("south", "north")
-)
+```{r block-predict, eval = has_agridat, echo = has_agridat}
 block_pred <- gp_predict(fit, support = "block", blocks = blocks, seed = 1L)
-block_pred@locations
-data.frame(block = block_pred@locations$block,
-           mean = round(block_pred@mean, 1),
-           sd = round(block_pred@sd, 2))
+block_tab <- data.frame(
+  block = block_pred@locations$block,
+  mean = round(block_pred@mean, 1L),
+  sd = round(block_pred@sd, 2L),
+  n_support = block_pred@n_support
+)
 ```
 
-Why this is not a cell-wise average: a naive mean of `n` point predictions would
-assume independence and shrink the block-average standard deviation by
-`1 / sqrt(n)`. Because neighbouring locations within a block are positively
-correlated, the change-of-support variance is materially larger -- the honest
-uncertainty for a paddock-scale claim.
+```{r block-predict-kable, echo = FALSE, eval = has_agridat}
+knitr::kable(
+  block_tab, col.names = c("Block", "Mean yield", "SD", "Supporting plots"),
+  caption = paste0(
+    "Block-average predictions for the south and north halves of county C1."
+  )
+)
+```
 
-```{r cos-compare}
+### Why this is not a cell-wise average
+
+A naive mean of the same $n_q$ point predictions would treat them as
+independent and shrink the block-average standard deviation by
+$1 / \sqrt{n_q}$. Because neighbouring plots within a block are positively
+correlated, the change-of-support variance is materially larger.
+
+```{r cos-compare, eval = has_agridat, echo = has_agridat}
 centre <- gp_predict(fit, data.frame(row = 5, col = 6))
-# The tensor-midpoint rule realises per_axis^2 nodes, per_axis = round(sqrt(n_quad)),
-# not the requested n_quad exactly -- divide by the realised count, not the request.
+# The tensor-midpoint rule realises per_axis^2 nodes, per_axis =
+# round(sqrt(n_quad)), not the requested n_quad exactly -- divide by the
+# realised count, not the request.
 per_axis <- max(2L, round(sqrt(blocks$n_quad)))
 n_realised <- per_axis^2L
 naive_sd <- centre@sd / sqrt(n_realised)
-c(change_of_support_sd = round(block_pred@sd[[1L]], 3),
-  naive_independence_sd = round(naive_sd, 4))
+sd_compare <- data.frame(
+  quantity = c("change-of-support SD (south block)",
+               "naive independence SD (centre point / sqrt(n))"),
+  sd = round(c(block_pred@sd[[1L]], naive_sd), 3L)
+)
 ```
 
-## Honest abstention
+```{r cos-compare-kable, echo = FALSE, eval = has_agridat}
+knitr::kable(
+  sd_compare, col.names = c("Quantity", "SD"),
+  caption = paste0(
+    "Change-of-support standard deviation against the naive independence ",
+    "assumption, both over ", n_realised, " quadrature nodes."
+  )
+)
+```
 
-`gpfield` refuses a prediction the data cannot support. Two refusals:
+### Abstention: when the data will not bear the answer
 
-```{r abstain-coarse}
+`gpfield` refuses a prediction the data cannot support, returning a typed
+`gpfield_abstention` with a machine-readable reason rather than a
+confident surface built on data too sparse or too coarse to carry it. Two
+refusals below, each triggered for real by the fit above, are read against
+their own numbers in the *Read* section.
+
+```{r abstain-coarse, eval = has_agridat, echo = has_agridat}
 # A query grid spaced far more coarsely than the estimated range.
 coarse <- gp_predict(fit, data.frame(row = c(1, 50, 100),
                                      col = c(1, 50, 100)))
@@ -170,55 +279,52 @@ is_gpfield_abstention(coarse)
 coarse
 ```
 
-```{r abstain-gap}
+```{r abstain-gap, eval = has_agridat, echo = has_agridat}
 # A block placed far outside the trial footprint.
 far <- block_support(lower = rbind(c(100, 100)), upper = rbind(c(110, 110)))
-gp_predict(fit, support = "block", blocks = far, seed = 1L)
+far_pred <- gp_predict(fit, support = "block", blocks = far, seed = 1L)
+is_gpfield_abstention(far_pred)
+far_pred
 ```
 
-Each abstention carries a machine-readable `reason` and the numbers behind it, so
-a downstream caller -- or the orchestration layer -- can branch on the refusal
-rather than catch an exception or, worse, trust a confident wrong value.
+### Emitting the orchestra contract
 
-## Emitting the orchestra contract
+`gpfield` is an orchestra member: a prediction is expressible in the
+federation's C2 v2 contract, the generic `orchestra_manifest` every current
+and future orchestra member emits or consumes. `as_orchestra_manifest()`
+adapts a prediction into it; `verify_manifest()` confirms the payload was
+not tampered with.
 
-`gpfield` is an orchestra member, so a result is expressible in the federation's
-shared manifest contract: a versioned, integrity-hashed object every member emits
-or consumes. `as_orchestra_manifest()` adapts a prediction into it, and
-`verify_manifest()` confirms the payload was not tampered with.
-
-```{r manifest}
+```{r manifest, eval = has_agridat, echo = has_agridat}
 point_pred <- gp_predict(fit, field[, c("row", "col")])
 manifest <- as_orchestra_manifest(point_pred)
 manifest
 verify_manifest(manifest)$ok
 ```
 
-The smoothed surface is now expressed in the orchestra's shared manifest
-contract, the format its calibration, uncertainty-quantification,
-causal-inference and decision members are built to consume.
+### Scaling to large fields
 
-## Scaling to large fields
-
-The exact solver is cubic in the number of observations -- comfortable for the
-hundreds-to-low-thousands of plots a multi-environment trial carries. For a field
-too large for the exact solver, `solver = "lowrank"` fits a Deterministic
+The exact solver is cubic in the number of observations -- comfortable for
+the hundreds-to-low-thousands of plots a multi-environment trial carries,
+but not for a much larger field. `solver = "lowrank"` fits a Deterministic
 Training Conditional (DTC) sparse Gaussian process (Quinonero-Candela and
-Rasmussen 2005) on a set of $m$ space-filling inducing points, at cost linear in
-the number of plots $n$ and quadratic in the (much smaller) inducing count.
+Rasmussen 2005) on a set of $m$ space-filling inducing points, at cost
+linear in the number of plots $n$ and quadratic in the inducing count.
 Writing $K_{nm}$ for the covariance between training points and inducing
-points and $K_{mm}$ for the inducing points' own covariance, DTC replaces the
-exact $n \times n$ training covariance $K_n$ by the rank-$m$ approximation
+points and $K_{mm}$ for the inducing points' own covariance, DTC replaces
+the exact $n \times n$ training covariance $K_n$ by the rank-$m$
+approximation
 
 $$
 K_n \approx K_{nm} K_{mm}^{-1} K_{mn},
 $$
 
 so every quantity that would otherwise need an $n \times n$ Cholesky
-factorisation instead needs only an $m \times m$ one, at cost
-$O(n m^2)$ rather than $O(n^3)$. Every verb above -- point and block
-prediction, change of support, honest abstention, manifest emission -- is
-unchanged; only the backend differs.
+factorisation instead needs only an $m \times m$ one. Every verb above --
+point and block prediction, change of support, abstention, manifest
+emission -- is unchanged; only the backend differs. This section needs no
+real trial data, so it runs regardless of `agridat`: a synthetic field,
+labelled as such, of two smooth sinusoidal gradients plus noise.
 
 ```{r lowrank}
 set.seed(1L)
@@ -233,9 +339,121 @@ fit_lr <- gp_fit(
 fit_lr
 ```
 
-When the inducing set covers the whole field the low-rank posterior is exactly
-the exact GP, so the choice is a scale-versus-cost dial rather than a change of
-model. The default backend stays exact.
+When the inducing set covers the whole field the low-rank posterior is
+exactly the exact GP, so the choice is a scale-versus-cost dial rather
+than a change of model; the default backend stays exact.
+
+## Read
+
+```{r read-prep, echo = FALSE}
+if (has_agridat) {
+  read_range <- round(fit@hyper$range_raw, 2L)
+  read_south_mean <- block_tab$mean[block_tab$block == "south"]
+  read_north_mean <- block_tab$mean[block_tab$block == "north"]
+  read_diff <- round(read_north_mean - read_south_mean, 1L)
+  read_ratio <- round(block_pred@sd[[1L]] / naive_sd, 2L)
+  read_coarse_spacing <- round(coarse$diagnostics$spacing, 1L)
+  read_coarse_range <- round(coarse$diagnostics$range, 2L)
+  read_coarse_ratio <- round(
+    coarse$diagnostics$spacing / coarse$diagnostics$range, 1L
+  )
+  read_far_reach <- round(far_pred$diagnostics$reach, 2L)
+  read_verify_ok <- verify_manifest(manifest)$ok
+} else {
+  read_range <- NA_real_
+  read_south_mean <- NA_real_
+  read_north_mean <- NA_real_
+  read_diff <- NA_real_
+  read_ratio <- NA_real_
+  read_coarse_spacing <- NA_real_
+  read_coarse_range <- NA_real_
+  read_coarse_ratio <- NA_real_
+  read_far_reach <- NA_real_
+  read_verify_ok <- NA
+}
+```
+
+```{r read-text, echo = FALSE, results = "asis"}
+if (has_agridat) {
+  cat(sprintf(
+    paste0(
+      "County C1's estimated correlation range is %.2f plot units, so a ",
+      "query spaced further apart than that asks the fit to interpolate ",
+      "between plots it no longer treats as related. Splitting the field ",
+      "into a south block (rows 1 to 9) and a north block (rows 10 to ",
+      "18) gives block-average yields of %.1f in the south and %.1f in ",
+      "the north, a difference of %.1f in the direction the row-yield ",
+      "correlation in the county-C1 facts table already predicted. The ",
+      "south block's change-of-support standard deviation is %.2f times ",
+      "what a naive independence assumption would report over the same ",
+      "%d quadrature nodes: positive within-block correlation is not ",
+      "averaged away, so the paddock-scale uncertainty the table above ",
+      "reports is larger than a cell-wise average would suggest.\n\n",
+      "Both refusals above are real. The three-point query grid is ",
+      "spaced %.1f plot units apart, roughly %.1f times the estimated ",
+      "%.2f-unit range, so `gpfield` abstains with reason ",
+      "`range_too_short` rather than interpolate between points it ",
+      "cannot relate. The far block sits at least %.2f units outside the ",
+      "trial footprint at every corner, further than any training ",
+      "plot's correlation reach, so `gpfield` abstains with reason ",
+      "`support_gap` rather than average zero informative observations ",
+      "into a confident block mean. The point-support manifest emitted ",
+      "from the same fit verifies: `verify_manifest()$ok` is `%s`.\n"
+    ),
+    read_range, read_south_mean, read_north_mean, read_diff, read_ratio,
+    n_realised, read_coarse_spacing, read_coarse_ratio, read_coarse_range,
+    read_far_reach, read_verify_ok
+  ))
+} else {
+  cat("agridat is not installed on this build, so the corn-trial numbers",
+      "above were not computed; only the low-rank section, which needs",
+      "no trial data, ran.\n")
+}
+```
+
+## Limits
+
+This vignette shows one axis-aligned rectangular block per call; `gpfield`
+does not yet support irregular or polygonal paddock footprints, so a
+management block that is not a rectangle needs approximating by one that
+is. The low-rank solver demonstrated in the last section is isotropic (a
+single length-scale in every direction); an anisotropic low-rank fit is
+not available, only the exact solver supports it. Neither block above was
+under-supported by a small margin: the south and the north block both sit
+comfortably inside the estimated correlation range of every training
+plot, and the far block sits far outside it, so the `support_gap`
+abstention here demonstrates the guard tripping cleanly rather than the
+boundary case where a block sits just inside or just outside the limit.
+agridat documents this trial's `yield` column only as "yield", with no
+physical unit recorded anywhere in the package, so the figure's colour
+scale and every mean and standard deviation above carry Besag and
+Higdon's original, unlabelled scale: comparisons within this vignette are
+meaningful, a comparison against a value from a different source is not,
+unless that source is on the same scale. Finally, nothing here holds out
+a plot and checks the fitted surface against it; the fit diagnostics and
+the block predictions above describe what the Gaussian process believes,
+not how well that belief matches a plot withheld from training.
+
+## What to read next
+
+*The Ensemble-Run Manifest: a Portable, Verifiable Record* (PESTO)
+documents the shared contract this vignette's manifest section emits
+into, including the reproducibility and integrity guarantees a consumer
+can rely on. *From an inference result to a grain plan* (grainPlan) shows
+a manifest like this one carried forward into a paddock-level nitrogen,
+variety or grade decision, the practical purpose a block-average
+prediction like the one above ultimately serves.
+
+## Reproduce
+
+Every fit and prediction above is seeded `seed = 1L`. Block-support
+prediction still accepts a `seed` argument for backward compatibility,
+but the block quadrature is a deterministic tensor grid and no longer
+depends on it. Package versions follow.
+
+```{r session-info}
+sessionInfo()
+```
 
 ## References
 
@@ -245,9 +463,10 @@ experiments. *Journal of the Royal Statistical Society, Series B*, 61(4),
 
 Cressie, N. (1993). *Statistics for Spatial Data*, revised edition. Wiley.
 
-Gotway, C. A. and Young, L. J. (2002). Combining incompatible spatial data.
-*Journal of the American Statistical Association*, 97(458), 632--648.
+Gotway, C. A. and Young, L. J. (2002). Combining incompatible spatial
+data. *Journal of the American Statistical Association*, 97(458),
+632--648.
 
-Quinonero-Candela, J. and Rasmussen, C. E. (2005). A unifying view of sparse
-approximate Gaussian process regression. *Journal of Machine Learning
-Research*, 6, 1939--1959.
+Quinonero-Candela, J. and Rasmussen, C. E. (2005). A unifying view of
+sparse approximate Gaussian process regression. *Journal of Machine
+Learning Research*, 6, 1939--1959.

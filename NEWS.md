@@ -48,6 +48,15 @@
   which divided by the *requested* `n_quad` rather than the tensor-midpoint
   quadrature rule's *realised* point count (`round(sqrt(n_quad))^2`), a
   discrepancy of 200 versus 196 at the vignette's default settings.
+* The vignette, retitled *From point-sampled plots to a paddock block
+  mean*, was restructured to the orchestra's vignette quality bar: a stated
+  trialist question up front, a Why/What/Do/Read/Limits/What-to-read-next/
+  Reproduce shape, every printed number interpreted inline rather than left
+  to the reader, the block-average predictions and the naive-independence
+  comparison rendered through `knitr::kable()`, and the smoothed-surface
+  figure now outlines the two paddock blocks it feeds into. No claim,
+  citation or code path changed; both abstentions the vignette already
+  demonstrated are read explicitly against the numbers that triggered them.
 
 # gpfield 0.3.0
 
