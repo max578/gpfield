@@ -1,5 +1,24 @@
 # gpfield (development version)
 
+* **The emitted manifest now declares what its `outputs` columns are.**
+  `outputs` mixes two spatial coordinates, the observed response, the
+  predictive mean, its standard deviation and a support count, and nothing in
+  the object said which was which. A consumer reading them positionally could
+  not tell a coordinate from an estimate: decideR's manifest tail priced all
+  six as candidate agronomic actions and returned a confident number built
+  from a coordinate. The declaration lives in `obs_schema`, which is **not**
+  part of `manifest_data_hash()`, so the identity of every gpfield manifest
+  ever recorded is unchanged and each still verifies.
+
+* Known and unresolved: `plan/manifest_spec_v0.1.md` defines `outputs` as
+  *n_real x n_obs*, model-predicted outputs at each parameter draw. A GP
+  predictive mean and standard deviation are not draws, and the coordinates
+  and support count are not model-predicted outputs at all, so this emitter is
+  still not conformant in shape. Making it so means either emitting posterior
+  predictive draws or moving the grid out of `outputs` -- both change
+  `data_hash` on a released version, so the shape question is deliberately
+  left open rather than settled here.
+
 ## Bug fixes
 
 * `gp_field_smooth()`'s `refine` argument could escape its own documented

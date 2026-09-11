@@ -240,6 +240,26 @@ S7::method(as_orchestra_manifest, gpfield_prediction_class) <-
       loglik = fit@loglik,
       n_train = length(fit@y_raw))
 
+    # The columns of `outputs` are a mix of kinds -- two coordinates, the
+    # observed response, the predictive mean, its standard deviation and a
+    # support count -- and nothing in the object said which was which. A
+    # consumer reading them positionally cannot tell a coordinate from an
+    # estimate: decideR priced `x`, `y`, `z`, `mean`, `sd` and `n_support` as
+    # six agronomic actions and returned a number (fixed consumer-side
+    # 2026-09-11, declared here so no consumer has to guess again).
+    #
+    # `obs_schema` is deliberately the place for it: it is NOT part of
+    # `manifest_data_hash()`, so declaring it leaves the identity of every
+    # gpfield manifest ever recorded untouched.
+    schema <- list(outputs = data.frame(
+      name = c(fit@spec@coords, fit@spec@response, "mean", "sd", "n_support"),
+      quantity = c(rep("spatial_coordinate", length(fit@spec@coords)),
+                   "observed_response", "predicted_mean",
+                   "predictive_sd", "support_count"),
+      unit = c(rep(NA_character_, length(fit@spec@coords)),
+               rep(NA_character_, 4L)),
+      stringsAsFactors = FALSE))
+
     seed <- as.integer(fit@seed)
     dh <- .hash_payload(data.frame(), outputs, NULL, NULL, seed)
     rid <- run_id %||% paste0("gpfield-",
@@ -255,6 +275,7 @@ S7::method(as_orchestra_manifest, gpfield_prediction_class) <-
       seed               = seed,
       params             = data.frame(),
       outputs            = outputs,
+      obs_schema         = schema,
       consumed_manifests = list(),
       metadata           = meta,
       timestamp          = Sys.time(),

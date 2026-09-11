@@ -78,3 +78,37 @@ test_that("verify_manifest rejects a non-manifest object", {
   v <- verify_manifest(list())
   expect_false(v$ok)
 })
+
+# --- added 2026-09-11 --------------------------------------------------------
+# `outputs` mixes two coordinates, the observed response, the predictive mean,
+# its SD and a support count. Nothing declared which was which, so a consumer
+# reading them positionally could not tell a coordinate from an estimate --
+# decideR priced all six as agronomic actions and returned a number. The schema
+# is declared in `obs_schema`, which is not part of manifest_data_hash(), so
+# the identity of every previously recorded gpfield manifest is unchanged.
+test_that("the emitted manifest declares what its outputs columns are", {
+  set.seed(1)
+  d <- data.frame(x = runif(40), y = runif(40))
+  d$z <- sin(3 * d$x) + rnorm(40, sd = 0.1)
+  sp <- gpfield_spec(response = "z", coords = c("x", "y"))
+  m <- as_orchestra_manifest(gp_predict(gp_fit(sp, d, seed = 1L),
+                                        newdata = d[1:5, ]))
+  sch <- m@obs_schema$outputs
+  expect_false(is.null(sch))
+  expect_setequal(sch$name, colnames(m@outputs))
+  expect_identical(sch$quantity[sch$name == "mean"], "predicted_mean")
+  expect_true(all(sch$quantity[sch$name %in% c("x", "y")] ==
+                    "spatial_coordinate"))
+})
+
+test_that("declaring the schema does not change the manifest's identity", {
+  set.seed(1)
+  d <- data.frame(x = runif(40), y = runif(40))
+  d$z <- sin(3 * d$x) + rnorm(40, sd = 0.1)
+  sp <- gpfield_spec(response = "z", coords = c("x", "y"))
+  m <- as_orchestra_manifest(gp_predict(gp_fit(sp, d, seed = 1L),
+                                        newdata = d[1:5, ]))
+  # obs_schema is outside manifest_data_hash(); the stored hash must still
+  # reproduce from the payload alone.
+  expect_true(verify_manifest(m)$ok)
+})
