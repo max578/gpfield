@@ -85,6 +85,17 @@ gp_predict(fit, data.frame(row = c(1, 60), col = c(1, 60)))
 #>     spacing_tol = 1
 ```
 
+## Contributing
+
+Bug reports and suggestions are welcome through the
+[GitHub issues](https://github.com/max578/gpfield/issues).
+
+## Citation
+
+``` r
+citation("gpfield")
+```
+
 ## Licence
 
 MIT (c) 2026 Max Moldovan. The orchestra is open-source across the
