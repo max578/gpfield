@@ -1,4 +1,4 @@
-# gpfield (development version)
+# gpfield 0.4.0
 
 * **The emitted manifest now declares what its `outputs` columns are.**
   `outputs` mixes two spatial coordinates, the observed response, the
