@@ -5,7 +5,7 @@
 # several environments. `gp_field_smooth()` is the one-call path from such a data
 # frame to a smoothed field surface: it fits a gpfield GP over the row-column
 # coordinates and predicts back onto a (possibly finer) plot grid, abstaining
-# honestly when the layout cannot support the requested resolution. An optional
+# when the layout cannot support the requested resolution. An optional
 # plot helper draws the smoothed surface when ggplot2 is available.
 
 #' Smooth a row-column field or trial layout
@@ -13,7 +13,7 @@
 #' One call from a multi-environment-trial (or any row-column field) data frame
 #' to a smoothed surface. Fits a gpfield Gaussian process over the row and column
 #' coordinates and predicts the latent trait surface back onto a plot grid -- the
-#' observed grid by default, or a finer grid through `refine`. The honest
+#' observed grid by default, or a finer grid through `refine`. The
 #' abstention of [gp_predict()] is inherited: refining only inserts points
 #' strictly between the *observed* row-column locations, so if the observed
 #' grid's own spacing is already coarser than the estimated correlation range

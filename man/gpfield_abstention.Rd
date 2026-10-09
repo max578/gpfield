@@ -34,8 +34,8 @@ An object of class \code{"gpfield_abstention"}: a list with \code{reason},
 \code{detail}, \code{scope}, \code{diagnostics} and \code{abstained = TRUE}.
 }
 \description{
-Returns a small classed object signalling that a prediction could not be
-honestly produced, with a machine-readable reason code and human-readable
+Returns a small classed object signalling that the data cannot support a
+prediction, with a machine-readable reason code and human-readable
 detail. Used in place of a confident-but-wrong prediction so that callers can
 branch on a refusal rather than trust an unsupported surface.
 }

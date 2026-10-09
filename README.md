@@ -9,7 +9,7 @@ field and multi-environment-trial (MET) data: it smooths a noisy field
 surface, predicts at a support different from the one observed (a point
 process predicted as paddock-scale block averages, with the predictive
 variance propagated through the support map), and – the part that
-matters in practice – abstains honestly when the data support or the
+matters in practice – abstains when the data support or the
 estimated spatial range cannot bear the requested prediction resolution,
 rather than returning a confident wrong surface.
 

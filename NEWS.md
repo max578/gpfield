@@ -1,3 +1,8 @@
+# gpfield 0.4.1
+
+* Help pages and the README describe abstention in plainer words. No change
+  to code or results.
+
 # gpfield 0.4.0
 
 * **The emitted manifest now declares what its `outputs` columns are.**
@@ -94,7 +99,7 @@ re-grounding of the orchestra manifest against the federation contract.
   inducing points are selected deterministically by farthest-point sampling (no
   RNG), so the fit is reproducible; when the inducing set is the whole training
   set the DTC posterior is exactly the exact GP. Every downstream verb -- point
-  and block prediction, change of support, honest abstention, manifest emission
+  and block prediction, change of support, abstention, manifest emission
   -- works unchanged under the low-rank fit. The default solver stays exact, and
   the low-rank solver falls back to exact when the data have no more rows than
   `n_inducing`.
@@ -216,7 +221,7 @@ re-grounding of the orchestra manifest against the federation contract.
 
 First release. `gpfield` enrols the orchestra's spatial member: change-of-support
 Gaussian-process regression for field and multi-environment-trial data, with
-honest abstention and orchestra-manifest emission from day one. The Gaussian
+abstention and orchestra-manifest emission from day one. The Gaussian
 process is a self-contained exact solver in base R -- no heavy external
 GP dependency -- so the package installs and checks anywhere.
 

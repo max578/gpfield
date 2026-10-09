@@ -10,8 +10,8 @@
 
 #' Construct a typed gpfield abstention
 #'
-#' Returns a small classed object signalling that a prediction could not be
-#' honestly produced, with a machine-readable reason code and human-readable
+#' Returns a small classed object signalling that the data cannot support a
+#' prediction, with a machine-readable reason code and human-readable
 #' detail. Used in place of a confident-but-wrong prediction so that callers can
 #' branch on a refusal rather than trust an unsupported surface.
 #'

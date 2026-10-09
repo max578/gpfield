@@ -46,7 +46,7 @@ when the fit or the prediction cannot be supported.
 One call from a multi-environment-trial (or any row-column field) data frame
 to a smoothed surface. Fits a gpfield Gaussian process over the row and column
 coordinates and predicts the latent trait surface back onto a plot grid -- the
-observed grid by default, or a finer grid through \code{refine}. The honest
+observed grid by default, or a finer grid through \code{refine}. The
 abstention of \code{\link[=gp_predict]{gp_predict()}} is inherited: refining only inserts points
 strictly between the \emph{observed} row-column locations, so if the observed
 grid's own spacing is already coarser than the estimated correlation range
