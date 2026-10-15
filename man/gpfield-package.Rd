@@ -6,6 +6,8 @@
 \alias{gpfield-package}
 \title{gpfield: Change-of-Support Gaussian-Process Regression for Field and Multi-Environment-Trial Data}
 \description{
+\if{html}{\figure{logo.png}{options: style='float: right' alt='logo' width='120'}}
+
 A self-contained, contract-emitting member of the agricultural analytics orchestra for spatial and spatio-temporal Gaussian-process regression over field and multi-environment-trial layouts. Fits an exact Gaussian process to spatial (and optionally temporal) coordinates with a choice of squared-exponential or 'Matern' covariance, estimating the hyperparameters by marginal-likelihood optimisation. Its defining feature is change of support: a prediction can be requested at a support different from the one observed -- a point process predicted as block (paddock-scale) averages, or block averages disaggregated toward points -- with the predictive variance propagated through the support map. Predictions abstain with a typed, machine-readable reason when the estimated spatial range or the data support cannot bear the requested resolution, so the member refuses cleanly rather than returning a confident wrong surface. Results are emitted as a versioned, provenance-complete object compatible with the orchestra ensemble-manifest contract, so a smoothed field surface composes directly with downstream calibration, uncertainty-quantification, causal-inference and decision tools. The package is released under the MIT licence and takes no heavy external Gaussian-process dependency: the exact solver is base R.
 }
 \seealso{

@@ -1,7 +1,15 @@
 
 <!-- README.md is generated from README.Rmd. Please edit that file. -->
 
-# gpfield
+# gpfield <img src="man/figures/logo.png" align="right" height="139" alt="gpfield logo" />
+
+<!-- badges: start -->
+
+[![R-CMD-check](https://github.com/max578/gpfield/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/max578/gpfield/actions/workflows/R-CMD-check.yaml)
+[![Codecov test
+coverage](https://codecov.io/gh/max578/gpfield/graph/badge.svg)](https://app.codecov.io/gh/max578/gpfield)
+[![r-universe](https://max578.r-universe.dev/badges/gpfield)](https://max578.r-universe.dev/gpfield)
+<!-- badges: end -->
 
 `gpfield` is the spatial member of an agricultural-analytics R-package
 orchestra. It does change-of-support Gaussian-process regression for
@@ -9,13 +17,32 @@ field and multi-environment-trial (MET) data: it smooths a noisy field
 surface, predicts at a support different from the one observed (a point
 process predicted as paddock-scale block averages, with the predictive
 variance propagated through the support map), and – the part that
-matters in practice – abstains when the data support or the
-estimated spatial range cannot bear the requested prediction resolution,
-rather than returning a confident wrong surface.
+matters in practice – abstains when the data support or the estimated
+spatial range cannot bear the requested prediction resolution, rather
+than returning a confident wrong surface.
 
 The Gaussian process is a self-contained exact solver in base R, so the
 package takes no heavy external GP dependency and installs and checks
 anywhere.
+
+## Related packages
+
+- [gstat](https://CRAN.R-project.org/package=gstat) does variogram
+  modelling and point or block kriging, including spatio-temporal
+  kriging and simulation.
+- [fields](https://CRAN.R-project.org/package=fields) fits curves and
+  surfaces to spatial data with splines and kriging, choosing smoothing
+  and covariance parameters by cross-validation or REML.
+- [GpGp](https://CRAN.R-project.org/package=GpGp) fits Gaussian process
+  models to large spatial and spatio-temporal data quickly with
+  Vecchia’s approximation.
+
+gpfield fits an exact Gaussian process, whose cost grows with the cube
+of the number of observations, so it suits field trials rather than very
+large datasets. It adds a typed refusal when the estimated range or the
+data cannot support the requested prediction, a one-call smoother for
+row-column trial layouts (`gp_field_smooth()`), and output in the
+orchestra manifest that the other orchestra packages read.
 
 ## Installation
 
@@ -72,7 +99,7 @@ gp_predict(fit, support = "block", blocks = blocks, seed = 1L)
 #>   support:   block
 #>   locations: 2
 #>   mean range: [4.725, 4.778]
-#>   sd range:   [0.04003, 0.04003]
+#>   sd range:   [0.03812, 0.03812]
 
 # Ask for a resolution the field cannot support: gpfield abstains.
 gp_predict(fit, data.frame(row = c(1, 60), col = c(1, 60)))
@@ -87,8 +114,8 @@ gp_predict(fit, data.frame(row = c(1, 60), col = c(1, 60)))
 
 ## Contributing
 
-Bug reports and suggestions are welcome through the
-[GitHub issues](https://github.com/max578/gpfield/issues).
+Bug reports and suggestions are welcome through the [GitHub
+issues](https://github.com/max578/gpfield/issues).
 
 ## Citation
 

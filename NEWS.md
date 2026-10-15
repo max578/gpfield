@@ -1,3 +1,9 @@
+# gpfield (development version)
+
+* The package has a logo.
+* README carries status badges and lists related packages.
+* CI runs lintr (report-only) and test coverage.
+
 # gpfield 0.4.1
 
 * Help pages and the README describe abstention in plainer words. No change
