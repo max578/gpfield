@@ -5,10 +5,12 @@
 
 <!-- badges: start -->
 
+[![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
 [![R-CMD-check](https://github.com/max578/gpfield/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/max578/gpfield/actions/workflows/R-CMD-check.yaml)
 [![Codecov test
 coverage](https://codecov.io/gh/max578/gpfield/graph/badge.svg)](https://app.codecov.io/gh/max578/gpfield)
 [![r-universe](https://max578.r-universe.dev/badges/gpfield)](https://max578.r-universe.dev/gpfield)
+[![pkgdown](https://github.com/max578/gpfield/actions/workflows/pkgdown.yaml/badge.svg)](https://max578.github.io/gpfield/)
 <!-- badges: end -->
 
 `gpfield` is the spatial member of an agricultural-analytics R-package
