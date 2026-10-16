@@ -14,6 +14,7 @@ A self-contained, contract-emitting member of the agricultural analytics orchest
 Useful links:
 \itemize{
   \item \url{https://github.com/max578/gpfield}
+  \item \url{https://max578.github.io/gpfield/}
   \item Report bugs at \url{https://github.com/max578/gpfield/issues}
 }
 
