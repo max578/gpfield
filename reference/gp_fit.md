@@ -1,0 +1,73 @@
+# Fit a gpfield Gaussian process to field or trial data
+
+Solves an exact Gaussian-process regression of the response on the
+spatial (and optionally temporal) coordinates named by the
+`gpfield_spec`. The coordinates and response are standardised, the
+chosen kernel's hyperparameters are estimated by maximising the marginal
+likelihood, and the solved Cholesky system is stored so that
+[`gp_predict()`](https://max578.github.io/gpfield/reference/gp_predict.md)
+can predict cheaply – at the observed support or another.
+
+## Usage
+
+``` r
+gp_fit(spec, data, seed = NULL)
+```
+
+## Arguments
+
+- spec:
+
+  A `gpfield_spec` from
+  [`gpfield_spec()`](https://max578.github.io/gpfield/reference/gpfield_spec.md).
+
+- data:
+
+  A `data.frame` carrying the coordinate columns, the optional time
+  column, and the response column named by `spec`.
+
+- seed:
+
+  Optional integer RNG seed recorded with the fit for provenance. The
+  exact fit is deterministic, so the seed is metadata rather than a
+  source of randomness.
+
+## Value
+
+A `gpfield_fit` S7 object, or a
+[`gpfield_abstention()`](https://max578.github.io/gpfield/reference/gpfield_abstention.md)
+with reason `"degenerate_fit"` when the marginal-likelihood optimisation
+does not yield a usable covariance.
+
+## Details
+
+The estimated length-scale is reported in raw coordinate units as the
+effective (practical) correlation `range` – the distance at which the
+covariance has decayed to `0.05`, so points beyond it are effectively
+independent. That range is the quantity the change-of-support and
+abstention machinery reasons about: a prediction finer than the range is
+unsupported, and the fit makes that range explicit rather than implicit.
+
+## See also
+
+[`gpfield_spec()`](https://max578.github.io/gpfield/reference/gpfield_spec.md),
+[`gp_predict()`](https://max578.github.io/gpfield/reference/gp_predict.md),
+[`gp_field_smooth()`](https://max578.github.io/gpfield/reference/gp_field_smooth.md)
+
+## Examples
+
+``` r
+set.seed(1L)
+grid <- expand.grid(x = seq_len(8L), y = seq_len(8L))
+grid$yield <- 2 + 0.3 * grid$x + sin(grid$y / 2) + stats::rnorm(nrow(grid), 0, 0.2)
+spec <- gpfield_spec(coords = c("x", "y"), response = "yield")
+fit <- gp_fit(spec, grid, seed = 1L)
+fit
+#> <gpfield_fit>
+#>   kernel:      matern
+#>   n training:  64
+#>   length-scale (standardised): 5.412
+#>   range (raw units):           34.24
+#>   marginal var / noise var:    6.242 / 0.02753
+#>   log marginal likelihood:     -6.886
+```
